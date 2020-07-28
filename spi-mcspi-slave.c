@@ -560,8 +560,11 @@ struct omap2_mcspi_platform_config mcspi_slave_pdata = {
 };
 
 const struct of_device_id mcspi_slave_of_match[] = {
+	/*{
+		.compatible = "ti,omap4-mcspi",  
+	},*/
 	{
-		.compatible = "spislave,spi-slave-debug",
+		.compatible = "linux,spi-mcspi-slave",
 		.data = &mcspi_slave_pdata,
 	},
 	{ }
@@ -746,6 +749,6 @@ static struct platform_driver mcspi_slave_driver = {
 module_platform_driver(mcspi_slave_driver);
 
 MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("Patryk Mezydlo, <mezydlo.p@gmail.com>");
+MODULE_AUTHOR("test1");
 MODULE_DESCRIPTION("SPI slave for McSPI controller.");
 MODULE_VERSION("1.0");
