@@ -375,7 +375,7 @@ int mcspi_slave_set_irq(struct spislave *slave)
 	u32 val;
 	int ret;
 
-	pr_info("%s: function: set irq\n", DRIVER_NAME);
+	pr_info("%s: function mcspi_slave_set_irq: set irq\n", DRIVER_NAME);
 
 	val = mcspi_slave_read_reg(mcspi->base, MCSPI_IRQENABLE);
 	val &= ~MCSPI_IRQ_RX_FULL;
@@ -513,7 +513,10 @@ int mcspi_slave_setup(struct spislave *slave)
 	ret = mcspi_slave_set_irq(slave);
 
 	if (ret < 0)
+	{
+		pr_info("%s: function: mcspi_slave_set_irq failed!!!\n", DRIVER_NAME);
 		return -EINTR;
+	}
 
 	return 0;
 }
@@ -535,10 +538,13 @@ int mcspi_slave_transfer(struct spislave *slave)
 	pr_info("%s: var: bits_per_word=%d\n", DRIVER_NAME, msg->bits_per_word);
 	pr_info("%s: var: buf_depth=%d\n", DRIVER_NAME, msg->buf_depth);
 
+	pr_info("%s: function: transfer \n", DRIVER_NAME);	
 	ret = mcspi_slave_pio_tx_transfer(slave);
 	if (ret < 0)
-		return -EFAULT;
+	return -EFAULT;
 
+	
+    pr_info("%s: function: transfer OK\n", DRIVER_NAME);
 	return 0;
 }
 
@@ -643,7 +649,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	memcpy(&cp_res, res, sizeof(struct resource));
 
-	pr_info("%s: act: irq, platform get resou\n", DRIVER_NAME);
+	pr_info("%s: act: irq, platform get resources\n", DRIVER_NAME);
 
 	if (!res) {
 		ret = -ENODEV;
@@ -660,7 +666,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 		goto free_slave;
 	}
 
-	pr_info("%s: act: devm ioremap reso\n", DRIVER_NAME);
+	pr_info("%s: act: devm ioremap resource\n", DRIVER_NAME);
 
 	mcspi->cs_polarity = cs_polarity;
 	mcspi->cs_sensitive = cs_sensitive;
