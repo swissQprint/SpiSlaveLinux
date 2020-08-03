@@ -11,7 +11,16 @@
 #include <linux/pm_runtime.h>
 #include <linux/of_irq.h>
 #include <linux/interrupt.h>
-#include <linux/uaccess.h>
+#include <linux/of.h>
+#include <linux/fs.h>
+#include <linux/ioctl.h>
+#include <asm/uaccess.h>
+#include <linux/wait.h>
+#include <linux/poll.h>
+#include <linux/sched.h>
+#include <linux/dma-mapping.h>
+#include <linux/dmaengine.h>
+#include <linux/omap-dma.h>
 
 #define DRIVER_NAME "spi-mcspi-slave"
 
@@ -106,6 +115,32 @@
 #define MCSPI_CHSTAT_TXFFF			BIT(4)
 #define MCSPI_CHSTAT_TXFFE			BIT(3)
 
+#define SPI_DMA_MODE				1
+#define SPI_PIO_MODE				0
+#define SPI_TRANSFER_MODE			SPI_DMA_MODE
+
+#define SPI_DMA_TIMEOUT				(msecs_to_jiffies(10000))
+#define DMA_MIN_BYTES				33
+
+struct spi_slave_dma {
+	struct dma_chan				*dma_tx;
+	struct dma_chan				*dma_rx;
+
+	dma_addr_t				tx_dma_addr;
+	dma_addr_t				rx_dma_addr;
+
+	struct dma_slave_config			config;
+
+	struct completion			dma_tx_completion;
+	struct completion			dma_rx_completion;
+
+	struct dma_async_tx_descriptor		*tx_desc;
+	struct scatterlist			sg_tx;
+
+	struct dma_async_tx_descriptor		*rx_desc;
+	struct scatterlist			sg_rx;
+};
+
 struct mcspi_drv {
 	void __iomem *base;
 	unsigned int pin_dir;
@@ -114,6 +149,12 @@ struct mcspi_drv {
 	unsigned int pha;
 	unsigned int pol;
 	unsigned int irq;
+
+    u32					start;
+	u32					end;
+	unsigned int		reg_offset;
+	//s16					bus_num;
+	struct spi_slave_dma			dma_channel;
 };
 
 inline unsigned int mcspi_slave_read_reg(void __iomem *base, u32 idx)
@@ -436,6 +477,7 @@ void mcspi_slave_set_mode(struct mcspi_drv *mcspi)
 	pr_info("%s: function: set mode\n", DRIVER_NAME);
 
 	val = mcspi_slave_read_reg(mcspi->base, MCSPI_MODULCTRL);
+	/*set bit(2) in modulctrl, spi is set in slave mode*/
 	val |= MCSPI_MODULCTRL_MS;
 	pr_info("%s: set mode: MODULCTRL:%x\n", DRIVER_NAME, val);
 	mcspi_slave_write_reg(mcspi->base, MCSPI_MODULCTRL, val);
@@ -444,6 +486,7 @@ void mcspi_slave_set_mode(struct mcspi_drv *mcspi)
 	val &= ~MCSPI_CHCONF_PHA;
 	val &= ~MCSPI_CHCONF_POL;
 
+	/*setting a line which is selected for reception */
 	if (mcspi->pin_dir == MCSPI_PIN_DIR_D0_IN_D1_OUT) {
 		val &= ~MCSPI_CHCONF_IS;
 		val &= ~MCSPI_CHCONF_DPE1;
@@ -454,7 +497,7 @@ void mcspi_slave_set_mode(struct mcspi_drv *mcspi)
 		val &= ~MCSPI_CHCONF_DPE0;
 	}
 
-	if (mcspi->pol == MCSPI_POL_HELD_HIGH)
+	/*if (mcspi->pol == MCSPI_POL_HELD_HIGH)
 		val &= ~MCSPI_CHCONF_POL;
 	else
 		val |= MCSPI_CHCONF_POL;
@@ -463,7 +506,7 @@ void mcspi_slave_set_mode(struct mcspi_drv *mcspi)
 		val &= ~MCSPI_CHCONF_PHA;
 	else
 		val |= MCSPI_CHCONF_PHA;
-
+*/
 	pr_info("%s: setmode: val:%x\n", DRIVER_NAME, val);
 	mcspi_slave_write_reg(mcspi->base, MCSPI_CH0CONF, val);
 }
@@ -476,6 +519,12 @@ void mcspi_slave_set_cs(struct mcspi_drv *mcspi)
 
 	val = mcspi_slave_read_reg(mcspi->base, MCSPI_CH0CONF);
 
+    /*cs polatiry
+	 * when cs_polarity is 0: MCSPI is enabled when cs line is 0
+	 * (set EPOL bit)
+	 * when cs_polarity is 1: MCSPI is enabled when cs line is 1
+	 * (clr EPOL bit)
+	 */
 	if (mcspi->cs_polarity == MCSPI_CS_POLARITY_ACTIVE_LOW)
 		val |= MCSPI_CHCONF_EPOL;
 	else
@@ -484,7 +533,11 @@ void mcspi_slave_set_cs(struct mcspi_drv *mcspi)
 	pr_info("%s: set cs:%x\n", DRIVER_NAME, val);
 	mcspi_slave_write_reg(mcspi->base, MCSPI_CH0CONF, val);
 	val = mcspi_slave_read_reg(mcspi->base, MCSPI_MODULCTRL);
-
+    /*
+	 * set bit(1) in modulctrl, spi wtihout cs line, only enabled
+	 * clear bit(1) in modulctrl, spi with cs line,
+	 * enable if cs is set
+	 */
 	if (mcspi->cs_sensitive == MCSPI_CS_SENSITIVE_ENABLED)
 		val &= ~MCSPI_MODULCTRL_PIN34;
 	else
@@ -494,12 +547,66 @@ void mcspi_slave_set_cs(struct mcspi_drv *mcspi)
 	mcspi_slave_write_reg(mcspi->base, MCSPI_MODULCTRL, val);
 }
 
+int mcspi_slave_request_dma(struct spislave *slave)
+{
+	dma_cap_mask_t				mask;
+	struct spi_slave_dma			*dma_channel;
+
+    struct mcspi_drv *mcspi = (struct mcspi_drv *)slave->spislave_gadget;
+	dma_channel = &mcspi->dma_channel;
+
+	pr_info("%s:mcspi_slave_request_dma  request dma\n", DRIVER_NAME);
+
+	init_completion(&dma_channel->dma_tx_completion);
+	init_completion(&dma_channel->dma_rx_completion);
+
+	dma_cap_zero(mask);
+	dma_cap_set(DMA_SLAVE, mask);
+
+
+   
+    dma_channel->dma_rx  = dma_request_chan(&slave->dev,
+				    "rx0");
+	if (dma_channel->dma_rx == NULL)
+		goto no_dma;
+    pr_info("%s:mcspi_slave_request_dma  dma_rx was allocated\n", DRIVER_NAME);
+   
+
+
+	/*dma_channel->dma_rx = dma_request_slave_channel_compat(mask,
+				    omap_dma_filter_fn, NULL, &slave->dev,
+				    "rx0");*/
+
+
+    
+	dma_channel->dma_tx  = dma_request_chan(&slave->dev,
+				    "tx0");
+    
+	/*dma_channel->dma_tx = dma_request_slave_channel_compat(mask,
+			      omap_dma_filter_fn, NULL, &slave->dev,
+			      "tx0");*/
+
+	if (dma_channel->dma_tx == NULL) {
+		dma_release_channel(dma_channel->dma_rx);
+		dma_channel->dma_rx = NULL;
+		goto no_dma;
+	}
+
+    pr_info("%s:mcspi_slave_request_dma  dma_tx was allocated\n", DRIVER_NAME);
+    pr_info("%s:mcspi_slave_request_dma  OK\n", DRIVER_NAME);
+	return 0;
+
+no_dma:
+	pr_err("%s: not using DMA!!!\n", DRIVER_NAME);
+	return -EAGAIN;
+}
+
 int mcspi_slave_setup(struct spislave *slave)
 {
 	struct mcspi_drv *mcspi = (struct mcspi_drv *)slave->spislave_gadget;
 	int ret;
 
-	pr_info("%s: function: setup\n", DRIVER_NAME);
+	pr_info("%s: function:mcspi_slave_setup  setup\n", DRIVER_NAME);
 
 	if (mcspi_slave_wait_for_bit(mcspi->base + MCSPI_SYSSTATUS,
 				     MCSPI_SYSSTATUS_RESETDONE) != 0) {
@@ -510,12 +617,27 @@ int mcspi_slave_setup(struct spislave *slave)
 	mcspi_slave_disable(mcspi);
 	mcspi_slave_set_mode(mcspi);
 	mcspi_slave_set_cs(mcspi);
-	ret = mcspi_slave_set_irq(slave);
-
-	if (ret < 0)
+	if (SPI_TRANSFER_MODE == SPI_PIO_MODE) 
 	{
-		pr_info("%s: function: mcspi_slave_set_irq failed!!!\n", DRIVER_NAME);
-		return -EINTR;
+			ret = mcspi_slave_set_irq(slave);
+
+			if (ret < 0) {
+				pr_err("%s IRQ is not avilable!!\n",
+				       DRIVER_NAME);
+				return ret;
+			}
+		}
+
+	else if (SPI_TRANSFER_MODE == SPI_DMA_MODE  &&
+		   (mcspi->dma_channel.dma_rx == NULL ||
+		    mcspi->dma_channel.dma_tx == NULL))  {
+			pr_info("%s: function:mcspi_slave_setup  DMA mode setup\n", DRIVER_NAME);
+			ret = mcspi_slave_request_dma(slave);
+
+			if (ret < 0 && ret != -EAGAIN) {
+				pr_err("%s: DMA isn't avilable\n", DRIVER_NAME);
+				return ret;
+			}
 	}
 
 	return 0;
@@ -674,6 +796,9 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	mcspi->irq = irq;
 	mcspi->pol = pol;
 	mcspi->pha = pha;
+	mcspi->start			= cp_res.start;
+	mcspi->end			= cp_res.end;
+	mcspi->reg_offset		= regs_offset;
 
 	/* FIXME:
 	 * CPOL and CPHA doesnt depend on device property which
@@ -688,6 +813,14 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, mcspi);
 
 	pr_info("%s: act: platform set drv\n", DRIVER_NAME);
+	pr_info("%s: start:%x\n", DRIVER_NAME, mcspi->start);
+	pr_info("%s: end:%x\n", DRIVER_NAME, mcspi->end);
+	//pr_info("%s: bus_num:%d\n", DRIVER_NAME, mcspi->bus_num);
+	pr_info("%s: regs_offset=%x\n", DRIVER_NAME, mcspi->reg_offset);
+	pr_info("%s: cs_sensitive=%d\n", DRIVER_NAME, mcspi->cs_sensitive);
+	pr_info("%s: cs_polarity=%d\n", DRIVER_NAME, mcspi->cs_polarity);
+	pr_info("%s: pin_dir=%d\n", DRIVER_NAME, mcspi->pin_dir);
+	pr_info("%s: interrupt:%d\n", DRIVER_NAME, mcspi->irq);
 
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_set_autosuspend_delay(&pdev->dev, SPI_AUTOSUSPEND_TIMEOUT);
