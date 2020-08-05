@@ -817,7 +817,7 @@ static int mcspi_slave_setup_transfer(struct spi_slave *slave)
 	pr_info("%s: bytes_per_load:%d\n", DRIVER_NAME, slave->bytes_per_load);
 	pr_info("%s: buf_depth:%d\n", DRIVER_NAME, slave->buf_depth);
 
-	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
+/*	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
 		slave->tx = kzalloc(slave->buf_depth, GFP_KERNEL);
 		if (slave->tx == NULL)
 			return -ENOMEM;
@@ -829,7 +829,7 @@ static int mcspi_slave_setup_transfer(struct spi_slave *slave)
 		if (slave->rx == NULL)
 			return -ENOMEM;
 		pr_info("%s:  mcspi_slave_setup_transfer allocated  slave->rx \n", DRIVER_NAME);
-	}
+	}*/
 
 
 	l = mcspi_slave_read_reg(slave->base, MCSPI_CH0CONF);
@@ -874,11 +874,11 @@ static int mcspi_slave_clr_transfer(struct spi_slave *slave)
 
 	pr_info("%s: mcspi_slave_clr_transfer clear transfer", DRIVER_NAME);
 
-	if (slave->tx != NULL)
+	/*if (slave->tx != NULL)
 		kfree(slave->tx);
 
 	if (slave->rx != NULL)
-		kfree(slave->rx);
+		kfree(slave->rx);*/
 
 	mcspi_slave_disable(slave);
 
@@ -1002,6 +1002,19 @@ static int mcspi_slave_setup(struct spi_slave *slave)
 	u32					l;
 
 	pr_info("%s: mcspi_slave_setup slave setup\n", DRIVER_NAME);
+	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
+		slave->tx = kzalloc(slave->buf_depth, GFP_KERNEL);
+		if (slave->tx == NULL)
+			return -ENOMEM;
+		pr_info("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
+	}
+
+	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM) {
+		slave->rx = kzalloc(slave->buf_depth, GFP_KERNEL);
+		if (slave->rx == NULL)
+			return -ENOMEM;
+		pr_info("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
+	}
 
 	/*verification status bit(0) in MCSPI system status register*/
 	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSSTATUS);
@@ -1053,7 +1066,7 @@ static int mcspi_slave_setup(struct spi_slave *slave)
 
 static void mcspi_slave_clean_up(struct spi_slave *slave)
 {
-	pr_info("%s: clean up\n", DRIVER_NAME);
+	pr_info("%s:  mcspi_slave_clean_up:: clean up\n", DRIVER_NAME);
 
 	tasklet_kill(&pio_rx_tasklet);
 
@@ -1209,6 +1222,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	pr_info("%s: cs_polarity=%d\n", DRIVER_NAME, slave->cs_polarity);
 	pr_info("%s: pin_dir=%d\n", DRIVER_NAME, slave->pin_dir);
 	pr_info("%s: interrupt:%d\n", DRIVER_NAME, slave->irq);
+	pr_info("%s: bytes_per_load:%d\n", DRIVER_NAME, slave->bytes_per_load);
 
 	pm_runtime_use_autosuspend(slave->dev);
 	pm_runtime_set_autosuspend_delay(slave->dev, SPI_AUTOSUSPEND_TIMEOUT);
@@ -1510,10 +1524,10 @@ static unsigned int spislave_event_poll(struct file *filp,
 		events = POLLIN | POLLRDNORM;
 		pr_info("%s: spislave_event_poll  seting events to %d!!\n", DRIVER_NAME,events);
 	}
-	else 
-	   pr_err("%s: spislave_event_poll rx_offset = 0\n", DRIVER_NAME);
+	//else 
+	//   pr_err("%s: spislave_event_poll rx_offset = 0\n", DRIVER_NAME);
 
-	pr_info("%s: POLL method end returning %d!!\n", DRIVER_NAME,events);
+	//pr_info("%s: POLL method end returning %d!!\n", DRIVER_NAME,events);
 
 	return events;
 }
