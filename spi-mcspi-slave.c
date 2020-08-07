@@ -222,6 +222,18 @@ static inline void mcspi_slave_write_reg(void __iomem *base,
 	iowrite32(val, base + idx);
 }
 
+
+static int mcspi_wait_for_completion( struct completion *x)
+   
+{
+	
+		if (wait_for_completion_interruptible(x) )
+			return -EINTR;
+	 
+	return 0;
+}
+
+
 static inline int mcspi_slave_bytes_per_word(int word_len)
 {
 	if (word_len <= 8)
@@ -615,6 +627,9 @@ static void mcspi_slave_dma_rx_callback(void *data)
 			 DMA_FROM_DEVICE);
 
     pr_info("%s: mcspi_slave_dma_rx_callback -> unmaped single \n", DRIVER_NAME);
+	pr_info("%s: mcspi_slave_dma_rx_callback -> Waking client!!! \n", DRIVER_NAME);
+	//for poll to exit
+	slave->rx_offset = slave->len;//to do change to length
 	wake_up_interruptible(&slave->wait);
 	mcspi_slave_disable(slave);
 }
@@ -626,7 +641,7 @@ static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
 	int					ret = 0;
 	dma_cookie_t				cookie;
 	struct dma_async_tx_descriptor		*tx_desc;
-    u32					l;
+    //u32					l;
 	dma_channel = &slave->dma_channel;
 	config = &dma_channel->config;
 	tx_desc = dma_channel->tx_desc;
@@ -724,6 +739,15 @@ pr_info("%s: mcspi_slave_dma_rx_transfer  step 4 .tx_submit \n", DRIVER_NAME);
 pr_info("%s: mcspi_slave_dma_rx_transfer  step 5 .dma_async_issue_pending \n", DRIVER_NAME);
 	dma_async_issue_pending(dma_channel->dma_rx);
 	mcspi_slave_dma_request_enable(slave, 1);
+pr_info("%s: mcspi_slave_dma_rx_transfer OK ->waiting for completion\n", DRIVER_NAME); 
+  /*  ret = mcspi_wait_for_completion( &dma_channel->dma_rx_completion);
+	if (ret) 
+	{
+		pr_info("%s: mcspi_slave_dma_rx_transfer :: wait aborted\n", DRIVER_NAME); 
+		dmaengine_terminate_sync(dma_channel->dma_rx);
+		mcspi_slave_dma_request_disable(slave, 1);
+		return 0;
+	}*/
 
 	return ret;
 
@@ -743,17 +767,23 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
 	const void				*tx_buf;
 	void					*rx_buf;
 	u32					l;
+	int bytes_per_word = 0;
+	unsigned int wcnt;
+	u32  xferlevel;
 
-	l = mcspi_slave_read_reg(slave->base, MCSPI_XFERLEVEL);
+    slave->len = 8; //transfer len - user buffer len-should be 1024 at the end!!!
 
-	l &= ~MCSPI_XFER_AEL;
-	l &= ~MCSPI_XFER_AFL;
-
-	slave->len = 8;
-
-	l &= ~MCSPI_XFER_WCNT;
-	l |= slave->len << 16;
-
+	//set xferlevel
+    l = mcspi_slave_read_reg(slave->base, MCSPI_XFERLEVEL);
+    bytes_per_word = mcspi_slave_bytes_per_word(slave->bits_per_word);
+   
+    slave->buf_depth  = SPI_SLAVE_BUF_DEPTH/2;
+    wcnt = slave->len / bytes_per_word;
+	pr_info("%s: mcspi_slave_setup_dma_transfer - wcnt %d, fifo_depth %d\n", DRIVER_NAME, wcnt,slave->buf_depth);
+	xferlevel = wcnt << 16;
+    xferlevel |= (bytes_per_word - 1) << 8;
+	xferlevel |= bytes_per_word - 1;
+	
 	mcspi_slave_write_reg(slave->base, MCSPI_XFERLEVEL, l);
 
 	//enable fifo
@@ -828,7 +858,8 @@ pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for rx_buf\n
 	config->dst_addr_width = width;
 	config->src_maxburst = burst;
 	config->dst_maxburst = burst;
-
+    reinit_completion(&dma_channel->dma_tx_completion);
+	reinit_completion(&dma_channel->dma_rx_completion);
 pr_info("%s:  mcspi_slave_setup_dma_transfer step:: calling mcspi_slave_dma_rx_transfer width=%d\n", DRIVER_NAME,width);
 	mcspi_slave_dma_rx_transfer(slave);
 
@@ -846,20 +877,6 @@ static int mcspi_slave_setup_transfer(struct spi_slave *slave)
 	pr_info("%s: bits_per_word:%x\n", DRIVER_NAME, slave->bits_per_word);
 	pr_info("%s: bytes_per_load:%d\n", DRIVER_NAME, slave->bytes_per_load);
 	pr_info("%s: buf_depth:%d\n", DRIVER_NAME, slave->buf_depth);
-
-/*	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
-		slave->tx = kzalloc(slave->buf_depth, GFP_KERNEL);
-		if (slave->tx == NULL)
-			return -ENOMEM;
-		pr_info("%s:  mcspi_slave_setup_transfer allocated  slave->tx \n", DRIVER_NAME);	
-	}
-
-	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM) {
-		slave->rx = kzalloc(slave->buf_depth, GFP_KERNEL);
-		if (slave->rx == NULL)
-			return -ENOMEM;
-		pr_info("%s:  mcspi_slave_setup_transfer allocated  slave->rx \n", DRIVER_NAME);
-	}*/
 
 
 	l = mcspi_slave_read_reg(slave->base, MCSPI_CH0CONF);
@@ -1549,14 +1566,19 @@ static unsigned int spislave_event_poll(struct file *filp,
 	}
 
 	poll_wait(filp, &slave->wait, wait);
-	if (slave->rx_offset != 0)
+	//if (SPI_TRANSFER_MODE == SPI_PIO_MODE)
 	{
-		
-		events = POLLIN | POLLRDNORM;
-		pr_info("%s: spislave_event_poll  seting events to %d!!\n", DRIVER_NAME,events);
+		if (slave->rx_offset != 0)
+		{
+			
+			events = POLLIN | POLLRDNORM;
+			pr_info("%s: spislave_event_poll  seting events to %d!!\n", DRIVER_NAME,events);
+		}
+		else 
+		  pr_err("%s: spislave_event_poll rx_offset = 0\n", DRIVER_NAME);
 	}
-	//else 
-	//   pr_err("%s: spislave_event_poll rx_offset = 0\n", DRIVER_NAME);
+	
+	
 
 	//pr_info("%s: POLL method end returning %d!!\n", DRIVER_NAME,events);
 
