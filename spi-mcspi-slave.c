@@ -139,7 +139,7 @@
 
 #define SPI_DMA_MODE				1
 #define SPI_PIO_MODE				0
-#define SPI_TRANSFER_MODE			SPI_PIO_MODE
+#define SPI_TRANSFER_MODE			SPI_DMA_MODE
 
 #define SPI_DMA_TIMEOUT				(msecs_to_jiffies(10000))
 
@@ -173,6 +173,8 @@ struct spi_slave {
 	/*var defining device parameters*/
 	struct device				*dev;
 	void __iomem				*base;
+	unsigned long		phys;
+
 	u32					start;
 	u32					end;
 	unsigned int				reg_offset;
@@ -624,10 +626,23 @@ static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
 	int					ret = 0;
 	dma_cookie_t				cookie;
 	struct dma_async_tx_descriptor		*tx_desc;
-
+    u32					l;
 	dma_channel = &slave->dma_channel;
 	config = &dma_channel->config;
 	tx_desc = dma_channel->tx_desc;
+
+
+   /* pr_info("%s: mcspi_slave_set_irq:: set interrupt\n", DRIVER_NAME);
+
+	l = mcspi_slave_read_reg(slave->base, MCSPI_IRQENABLE);
+
+	
+	l |= MCSPI_IRQ_EOW;
+
+	pr_info("%s: MCSPI_IRQENABLE:0x%x\n", DRIVER_NAME, l);
+
+	mcspi_slave_write_reg(slave->base, MCSPI_IRQENABLE, l);*/
+
 
 	pr_info("%s: mcspi_slave_dma_tx_transfer ----> tx dma transfer\n", DRIVER_NAME);
 
@@ -741,6 +756,18 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
 
 	mcspi_slave_write_reg(slave->base, MCSPI_XFERLEVEL, l);
 
+	//enable fifo
+	l = mcspi_slave_read_reg(slave->base, MCSPI_CH0CONF);
+
+	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM)
+		l |= MCSPI_CHCONF_FFER;
+
+	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM)
+		l |= MCSPI_CHCONF_FFEW;
+
+	mcspi_slave_write_reg(slave->base, MCSPI_CH0CONF, l);
+	pr_info("%s: mcspi_slave_setup_dma_transfer - enabling FIFO->MCSPI_CH0CONF:0x%x\n", DRIVER_NAME, l);
+
 	dma_channel = &slave->dma_channel;
 	config = &dma_channel->config;
 
@@ -770,7 +797,7 @@ pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for tx_buf\n
 		dma_channel->rx_dma_addr = dma_map_single(slave->dev,
 							  (void *)rx_buf,
 							  slave->len,
-							  DMA_TO_DEVICE);
+							  DMA_FROM_DEVICE);
 
 		if (dma_mapping_error(slave->dev, dma_channel->rx_dma_addr)) {
 			pr_err("%s:mapping rx dma error!\n", DRIVER_NAME);
@@ -779,7 +806,10 @@ pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for tx_buf\n
 
 	}
 pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for rx_buf\n", DRIVER_NAME);
+
+
 	bpw = mcspi_slave_bytes_per_word(slave->bits_per_word);
+	pr_info("%s:  mcspi_slave_setup_dma_transfer step  bpw=%d\n", DRIVER_NAME,bpw);
 
 	if (bpw == 1)
 		width = DMA_SLAVE_BUSWIDTH_1_BYTE;
@@ -789,17 +819,17 @@ pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for rx_buf\n
 		width = DMA_SLAVE_BUSWIDTH_4_BYTES;
 
 	/*set fifo but without fifo burst = 1*/
-	/*I will add later fifo connection with dma*/
+	/* fifo connection with dma ????*/
 	burst = 1;
 
-	config->src_addr = (phys_addr_t)(slave->base + MCSPI_RX0);
-	config->dst_addr = (phys_addr_t)(slave->base + MCSPI_TX0);
-	config->src_addr_width = 1;//width;
-	config->dst_addr_width = 1;//width;
+	config->src_addr = slave->phys+ MCSPI_RX0;
+	config->dst_addr = slave->phys+ MCSPI_TX0;
+	config->src_addr_width = width;
+	config->dst_addr_width = width;
 	config->src_maxburst = burst;
 	config->dst_maxburst = burst;
 
-pr_info("%s:  mcspi_slave_setup_dma_transfer step:: calling mcspi_slave_dma_rx_transfer\n", DRIVER_NAME);
+pr_info("%s:  mcspi_slave_setup_dma_transfer step:: calling mcspi_slave_dma_rx_transfer width=%d\n", DRIVER_NAME,width);
 	mcspi_slave_dma_rx_transfer(slave);
 
 	return ret;
@@ -1191,6 +1221,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 
 	slave->base = devm_ioremap_resource(&pdev->dev, &cp_res);
 
+    slave->phys = res->start + regs_offset;
 	if (IS_ERR(slave->base)) {
 		pr_err("%s: base addres ioremap error!!", DRIVER_NAME);
 		ret = PTR_ERR(slave->base);
