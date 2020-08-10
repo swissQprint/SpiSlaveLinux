@@ -34,6 +34,7 @@
 #define MCSPI_CS_SENSITIVE_ENABLED		1
 #define MCSPI_CS_SENSITIVE_DISABLED		0
 #define MCSPI_MAX_FIFO_DEPTH			64
+#define TRANSFER_BUF_SIZE 			1024 //1k it is constant user mode buffer size
 
 #define MCSPI_MODE_TRM				0
 #define MCSPI_MODE_RM				1
@@ -606,7 +607,7 @@ static void mcspi_slave_dma_tx_callback(void *data)
 			 DMA_TO_DEVICE);
 	pr_info("%s: mcspi_slave_dma_tx_callback :: unmaped single\n", DRIVER_NAME);
 
-
+    mcspi_slave_disable(slave);///???need it?
 }
 
 static void mcspi_slave_dma_rx_callback(void *data)
@@ -771,7 +772,7 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
 	unsigned int wcnt;
 	u32  xferlevel;
 
-    slave->len = 8; //transfer len - user buffer len-should be 1024 at the end!!!
+    slave->len = 186; //transfer len - user buffer len-should be 1024 at the end!!!
 
 	//set xferlevel
     l = mcspi_slave_read_reg(slave->base, MCSPI_XFERLEVEL);
@@ -1050,14 +1051,14 @@ static int mcspi_slave_setup(struct spi_slave *slave)
 
 	pr_info("%s: mcspi_slave_setup slave setup\n", DRIVER_NAME);
 	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
-		slave->tx = kzalloc(slave->buf_depth, GFP_KERNEL);
+		slave->tx = kzalloc(TRANSFER_BUF_SIZE, GFP_KERNEL);
 		if (slave->tx == NULL)
 			return -ENOMEM;
 		pr_info("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
 	}
 
 	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM) {
-		slave->rx = kzalloc(slave->buf_depth, GFP_KERNEL);
+		slave->rx = kzalloc(TRANSFER_BUF_SIZE, GFP_KERNEL);
 		if (slave->rx == NULL)
 			return -ENOMEM;
 		pr_info("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
@@ -1376,7 +1377,7 @@ static ssize_t spislave_read(struct file *flip, char __user *buf, size_t count,
 
 	/*after read clear receive buffer*/
 	slave->rx_offset = 0;
-	memset(slave->rx, 0, slave->buf_depth);
+	memset(slave->rx, 0, TRANSFER_BUF_SIZE);
 
 	if (error_count == 0)
 		return 0;
@@ -1399,9 +1400,9 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 		return -ENOMEM;
 	}
 
-	memset(slave->tx, 0, slave->buf_depth);
+	memset(slave->tx, 0, TRANSFER_BUF_SIZE);
 
-	if (count > MCSPI_MAX_FIFO_DEPTH/2) {
+	if (count > TRANSFER_BUF_SIZE) {
 		pr_err("%s: message is too long!!!\n", DRIVER_NAME);
 		return -EFAULT;
 	}
