@@ -19,6 +19,10 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
 #include <linux/omap-dma.h>
+#include <linux/mm.h>
+#include <linux/mman.h>
+#include <linux/io.h>
+
 
 #define DRIVER_NAME "spi-mcspi-slave"
 
@@ -144,6 +148,10 @@
 
 #define SPI_DMA_TIMEOUT				(msecs_to_jiffies(10000))
 
+#define mem_map_reserve(p)  set_bit(PG_reserved, &((p)->flags))
+#define mem_map_unreserve(p)    clear_bit(PG_reserved, &((p)->flags))
+
+
 static						DECLARE_BITMAP(minors,
 							       N_SPI_MINORS);
 static						LIST_HEAD(device_list);
@@ -210,7 +218,18 @@ struct spi_slave {
 	unsigned int				len;
 
 	struct spi_slave_dma			dma_channel;
+
+	
+
 };
+
+//mem mapping for rt buffer
+static int *kmalloc_rx_area ;  /* pointer to page aligned area */
+//int *kmalloc_rx_ptr; /* pointer to unaligned area */
+//mem mapping for tr buffer
+static int *kmalloc_tx_area;  /* pointer to page aligned area */
+//int *kmalloc_tx_pt; /* pointer to unaligned area */
+	
 
 static inline unsigned int mcspi_slave_read_reg(void __iomem *base, u32 idx)
 {
@@ -772,7 +791,7 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
 	unsigned int wcnt;
 	u32  xferlevel;
 
-    slave->len = 186; //transfer len - user buffer len-should be 1024 at the end!!!
+    slave->len = TRANSFER_BUF_SIZE; 
 
 	//set xferlevel
     l = mcspi_slave_read_reg(slave->base, MCSPI_XFERLEVEL);
@@ -1048,13 +1067,19 @@ static int mcspi_slave_setup(struct spi_slave *slave)
 {
 	int					ret = 0;
 	u32					l;
+	//unsigned long virt_addr;
 
 	pr_info("%s: mcspi_slave_setup slave setup\n", DRIVER_NAME);
 	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
 		slave->tx = kzalloc(TRANSFER_BUF_SIZE, GFP_KERNEL);
 		if (slave->tx == NULL)
 			return -ENOMEM;
+
 		pr_info("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
+			//for user mode mapping	
+		//kmalloc_tx_area=(int *)(((unsigned long)slave->tx + PAGE_SIZE -1) & PAGE_MASK);	
+		pr_info("%s:  mcspi_slave_setup mapped to  kmalloc_tx_area\n", DRIVER_NAME);
+		
 	}
 
 	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM) {
@@ -1062,6 +1087,9 @@ static int mcspi_slave_setup(struct spi_slave *slave)
 		if (slave->rx == NULL)
 			return -ENOMEM;
 		pr_info("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
+		//kmalloc_rx_area=(int *)(((unsigned long)slave->rx + PAGE_SIZE -1) & PAGE_MASK);	
+		 pr_info("%s:  mcspi_slave_setup mapped to  kmalloc_rx_area\n", DRIVER_NAME);
+		
 	}
 
 	/*verification status bit(0) in MCSPI system status register*/
@@ -1429,6 +1457,54 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 	return ret;
 }
 
+
+static int spislave_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	
+	    unsigned long offset = vma->vm_pgoff<<PAGE_SHIFT;
+        unsigned long size = vma->vm_end - vma->vm_start;
+        pr_info("%s entering spislave_mmap size-%d  offset %d\n",DRIVER_NAME,size,offset);
+
+        if (offset & ~PAGE_MASK)
+
+        {
+			pr_info("offset not aligned: %ld\n", offset);
+			return -ENXIO;
+
+        }
+        
+        if (size/4 >TRANSFER_BUF_SIZE) //??rigth check?
+        {
+			pr_info("size too big %d\n",size);
+			return(-ENXIO);
+
+        }
+	/* we only support shared mappings. Copy on write mappings are
+
+	   rejected here. A shared mapping that is writeable must have the
+
+	   shared flag set.
+	*/
+
+	if ((vma->vm_flags & VM_WRITE) && !(vma->vm_flags & VM_SHARED))
+	{
+	     pr_info("writeable mappings must be shared, rejecting\n");
+	     return(-EINVAL);
+
+	}
+	/* we do not want to have this area swapped out, lock it */
+	vma->vm_flags |= VM_LOCKED;
+
+    if (ioremap_page_range(vma->vm_start,virt_to_phys((void*)((unsigned long)kmalloc_rx_area)),size,PAGE_SHARED))
+	{
+		pr_info("remap page range failed\n");
+		return -ENXIO;
+	}
+	pr_info("spislave_mmap ok SIZE=%d, offset=%d\n",size,offset);
+}
+
+
+
 static int spislave_release(struct inode *inode, struct file *filp)
 {
 	int					ret = 0;
@@ -1593,6 +1669,7 @@ static const struct file_operations spislave_fops = {
 	.write		= spislave_write,
 	.release	= spislave_release,
 	.unlocked_ioctl = spislave_ioctl,
+//	.mmap       = spislave_mmap,
 	.poll		= spislave_event_poll,
 };
 
