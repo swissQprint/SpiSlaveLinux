@@ -294,6 +294,9 @@ static void mcspi_slave_enable(struct spi_slave *slave)
 	pr_info("%s:mcspi_slave_enable  MCSPI_CH0CTRL:0x%x\n", DRIVER_NAME, l);
 
 	mcspi_slave_write_reg(slave->base, MCSPI_CH0CTRL, l);
+
+	/* Flash post-writes */
+	mcspi_slave_read_reg(slave->base, MCSPI_CH0CTRL);
 }
 
 static void mcspi_slave_disable(struct spi_slave *slave)
@@ -308,6 +311,9 @@ static void mcspi_slave_disable(struct spi_slave *slave)
 	pr_info("%s:mcspi_slave_disable  MCSPI_CH0CTRL:0x%x\n", DRIVER_NAME, l);
 
 	mcspi_slave_write_reg(slave->base, MCSPI_CH0CTRL, l);
+
+	/* Flash post-writes */
+	mcspi_slave_read_reg(slave->base, MCSPI_CH0CTRL);
 }
 
 static void mcspi_slave_pio_rx_transfer(unsigned long data)
@@ -612,13 +618,14 @@ static void mcspi_slave_dma_tx_callback(void *data)
 {
 	struct spi_slave			*slave;
 	struct spi_slave_dma			*dma_channel;
-
+    
 	slave = (struct spi_slave *) data;
 	dma_channel = &slave->dma_channel;
 
 	pr_info("%s: mcspi_slave_dma_tx_callback :: end of DMA tx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 0);
+	mcspi_slave_disable(slave);///???need it?
 
 	complete(&dma_channel->dma_tx_completion);
 
@@ -626,32 +633,47 @@ static void mcspi_slave_dma_tx_callback(void *data)
 			 DMA_TO_DEVICE);
 	pr_info("%s: mcspi_slave_dma_tx_callback :: unmaped single\n", DRIVER_NAME);
 
-    mcspi_slave_disable(slave);///???need it?
+
+   
 }
 
 static void mcspi_slave_dma_rx_callback(void *data)
 {
 	struct spi_slave			*slave;
 	struct spi_slave_dma			*dma_channel;
-
+    u32					l;
 	slave = (struct spi_slave *) data;
 	dma_channel = &slave->dma_channel;
 
 	pr_info("%s: mcspi_slave_dma_rx_callback -> end of DMA rx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 1);
+	mcspi_slave_disable(slave);
 
 	complete(&dma_channel->dma_rx_completion);
 
 	dma_unmap_single(slave->dev, dma_channel->rx_dma_addr, slave->len,
 			 DMA_FROM_DEVICE);
 
+    //disable fifo
+	l = mcspi_slave_read_reg(slave->base, MCSPI_CH0CONF);
+
+	l &= ~MCSPI_CHCONF_FFER;
+	l &= ~MCSPI_CHCONF_FFEW;
+
+	mcspi_slave_write_reg(slave->base, MCSPI_CH0CONF, l);
+	pr_info("%s: mcspi_slave_dma_rx_callback - disabling FIFO->MCSPI_CH0CONF:0x%x\n", DRIVER_NAME, l);
+
+
     pr_info("%s: mcspi_slave_dma_rx_callback -> unmaped single \n", DRIVER_NAME);
 	pr_info("%s: mcspi_slave_dma_rx_callback -> Waking client!!! \n", DRIVER_NAME);
+
+	dma_sync_single_for_cpu(slave->dev,
+					dma_channel->rx_dma_addr, slave->len, DMA_FROM_DEVICE);
 	//for poll to exit
 	slave->rx_offset = slave->len;//to do change to length
 	wake_up_interruptible(&slave->wait);
-	mcspi_slave_disable(slave);
+	
 }
 
 static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
@@ -692,6 +714,8 @@ pr_info("%s: mcspi_slave_dma_tx_transfer ----> step 2. dmaengine_slave_config\n"
 	sg_dma_len(&dma_channel->sg_tx) = slave->len;
 
 pr_info("%s: mcspi_slave_dma_tx_transfer ----> step 3. dmaengine_prep_slave_sg\n", DRIVER_NAME);
+   dma_sync_single_for_device(slave->dev,
+					   dma_channel->tx_dma_addr, slave->len, DMA_TO_DEVICE);
 	tx_desc = dmaengine_prep_slave_sg(dma_channel->dma_tx,
 					  &dma_channel->sg_tx, 1,
 					  DMA_MEM_TO_DEV,
@@ -794,7 +818,7 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
     slave->len = TRANSFER_BUF_SIZE; 
 
 	//set xferlevel
-    l = mcspi_slave_read_reg(slave->base, MCSPI_XFERLEVEL);
+    xferlevel = mcspi_slave_read_reg(slave->base, MCSPI_XFERLEVEL);
     bytes_per_word = mcspi_slave_bytes_per_word(slave->bits_per_word);
    
     slave->buf_depth  = SPI_SLAVE_BUF_DEPTH/2;
@@ -804,7 +828,7 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
     xferlevel |= (bytes_per_word - 1) << 8;
 	xferlevel |= bytes_per_word - 1;
 	
-	mcspi_slave_write_reg(slave->base, MCSPI_XFERLEVEL, l);
+	mcspi_slave_write_reg(slave->base, MCSPI_XFERLEVEL, xferlevel);
 
 	//enable fifo
 	l = mcspi_slave_read_reg(slave->base, MCSPI_CH0CONF);
@@ -1651,8 +1675,8 @@ static unsigned int spislave_event_poll(struct file *filp,
 			events = POLLIN | POLLRDNORM;
 			pr_info("%s: spislave_event_poll  seting events to %d!!\n", DRIVER_NAME,events);
 		}
-		else 
-		  pr_err("%s: spislave_event_poll rx_offset = 0\n", DRIVER_NAME);
+		//else 
+		//  pr_err("%s: spislave_event_poll rx_offset = 0\n", DRIVER_NAME);
 	}
 	
 	
