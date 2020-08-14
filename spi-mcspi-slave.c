@@ -224,7 +224,7 @@ struct spi_slave {
 };
 
 //mem mapping for rt buffer
-static int *kmalloc_rx_area ;  /* pointer to page aligned area */
+void __iomem  *kmalloc_rx_area ;  /* pointer to page aligned area */
 //int *kmalloc_rx_ptr; /* pointer to unaligned area */
 //mem mapping for tr buffer
 static int *kmalloc_tx_area;  /* pointer to page aligned area */
@@ -625,7 +625,7 @@ static void mcspi_slave_dma_tx_callback(void *data)
 	pr_info("%s: mcspi_slave_dma_tx_callback :: end of DMA tx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 0);
-	mcspi_slave_disable(slave);///???need it?
+//	mcspi_slave_disable(slave);///???need it? try to comment
 
 	complete(&dma_channel->dma_tx_completion);
 
@@ -648,7 +648,7 @@ static void mcspi_slave_dma_rx_callback(void *data)
 	pr_info("%s: mcspi_slave_dma_rx_callback -> end of DMA rx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 1);
-	mcspi_slave_disable(slave);
+//	mcspi_slave_disable(slave);
 
 	complete(&dma_channel->dma_rx_completion);
 
@@ -673,7 +673,8 @@ static void mcspi_slave_dma_rx_callback(void *data)
 	//for poll to exit
 	slave->rx_offset = slave->len;//to do change to length
 	wake_up_interruptible(&slave->wait);
-	
+	mcspi_slave_disable(slave);  //maybe here???
+	pr_info("%s: mcspi_slave_dma_rx_callback -> called  wake_up_interruptible\n", DRIVER_NAME);
 }
 
 static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
@@ -1079,6 +1080,30 @@ pr_info("%s: mcspi_slave_request_dma for dma_rx OK\n", DRIVER_NAME);
 		dma_channel->dma_rx = NULL;
 		goto no_dma;
 	}
+
+	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
+		slave->tx = kzalloc(PAGE_SIZE*2, GFP_KERNEL);
+		if (slave->tx == NULL)
+			return -ENOMEM;
+
+		pr_info("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
+			//for user mode mapping	
+		//kmalloc_tx_area=(int *)(((unsigned long)slave->tx + PAGE_SIZE -1) & PAGE_MASK);	
+		pr_info("%s:  mcspi_slave_setup mapped to  kmalloc_tx_area\n", DRIVER_NAME);
+		
+	}
+
+	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM) {
+		slave->rx = kzalloc(PAGE_SIZE*2, GFP_KERNEL);
+		if (slave->rx == NULL)
+			return -ENOMEM;
+		pr_info("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
+		//kmalloc_rx_area=(int *)(((unsigned long)slave->rx + PAGE_SIZE -1) & PAGE_MASK);	
+		 kmalloc_rx_area = slave->rx ;
+		 pr_info("%s:  mcspi_slave_setup mapped to  kmalloc_rx_area\n", DRIVER_NAME);
+	}
+
+
 pr_info("%s: mcspi_slave_request_dma for dma_tx OK\n", DRIVER_NAME);
 	return 0;
 
@@ -1094,27 +1119,7 @@ static int mcspi_slave_setup(struct spi_slave *slave)
 	//unsigned long virt_addr;
 
 	pr_info("%s: mcspi_slave_setup slave setup\n", DRIVER_NAME);
-	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
-		slave->tx = kzalloc(TRANSFER_BUF_SIZE, GFP_KERNEL);
-		if (slave->tx == NULL)
-			return -ENOMEM;
-
-		pr_info("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
-			//for user mode mapping	
-		//kmalloc_tx_area=(int *)(((unsigned long)slave->tx + PAGE_SIZE -1) & PAGE_MASK);	
-		pr_info("%s:  mcspi_slave_setup mapped to  kmalloc_tx_area\n", DRIVER_NAME);
-		
-	}
-
-	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM) {
-		slave->rx = kzalloc(TRANSFER_BUF_SIZE, GFP_KERNEL);
-		if (slave->rx == NULL)
-			return -ENOMEM;
-		pr_info("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
-		//kmalloc_rx_area=(int *)(((unsigned long)slave->rx + PAGE_SIZE -1) & PAGE_MASK);	
-		 pr_info("%s:  mcspi_slave_setup mapped to  kmalloc_rx_area\n", DRIVER_NAME);
-		
-	}
+	
 
 	/*verification status bit(0) in MCSPI system status register*/
 	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSSTATUS);
@@ -1170,11 +1175,12 @@ static void mcspi_slave_clean_up(struct spi_slave *slave)
 
 	tasklet_kill(&pio_rx_tasklet);
 
-	if (slave->tx != NULL)
+   if (slave->tx != NULL)
 		kfree(slave->tx);
 
 	if (slave->rx != NULL)
 		kfree(slave->rx);
+	
 
 	if (slave->dma_channel.dma_tx) {
 		dma_release_channel(slave->dma_channel.dma_tx);
@@ -1421,8 +1427,8 @@ static ssize_t spislave_read(struct file *flip, char __user *buf, size_t count,
 		return -ENOMEM;
 	}
 
-    pr_info("%s: spislave_read  copyng RX buffer to user\n", DRIVER_NAME);
-	error_count = copy_to_user(buf, slave->rx, slave->rx_offset);
+    pr_info("%s: spislave_read  NOT copyng RX buffer to user\n", DRIVER_NAME);
+	//error_count = copy_to_user(buf, slave->rx, slave->rx_offset);
 
 	pr_info("%s: read end count:%d rx_offset:%d\n", DRIVER_NAME,
 		error_count, slave->rx_offset);
@@ -1437,12 +1443,15 @@ static ssize_t spislave_read(struct file *flip, char __user *buf, size_t count,
 		return -EFAULT;
 }
 
+
 static ssize_t spislave_write(struct file *flip, const char __user *buf,
 			      size_t count, loff_t *f_pos)
 {
 	ssize_t					ret = 0;
 	struct spi_slave			*slave;
 	unsigned long				missing;
+	
+	
     
 	pr_info("%s: spislave_write:: \n", DRIVER_NAME);
 	slave = flip->private_data;
@@ -1454,12 +1463,13 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 
 	memset(slave->tx, 0, TRANSFER_BUF_SIZE);
 
-	if (count > TRANSFER_BUF_SIZE) {
-		pr_err("%s: message is too long!!!\n", DRIVER_NAME);
-		return -EFAULT;
-	}
+	
 
     pr_info("%s: spislave_write::  copyng buffer from user to  TX buffer\n", DRIVER_NAME);
+	
+	
+	
+
 	missing = copy_from_user(slave->tx, buf, count);
 
 	if (missing == 0)
@@ -1483,48 +1493,32 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 
 
 static int spislave_mmap(struct file *file, struct vm_area_struct *vma)
-{
+{ 
+
 	
-	    unsigned long offset = vma->vm_pgoff<<PAGE_SHIFT;
-        unsigned long size = vma->vm_end - vma->vm_start;
-        pr_info("%s entering spislave_mmap size-%d  offset %d\n",DRIVER_NAME,size,offset);
+	
+	int ret = 0;
+    struct page *page = NULL;
+    unsigned long size = (unsigned long)(vma->vm_end - vma->vm_start);
+		pr_info("%s entering spislave_mmap \n",DRIVER_NAME);
 
-        if (offset & ~PAGE_MASK)
+    if (size > PAGE_SIZE*2) {
+        ret = -EINVAL;
+        goto out;  
+    } 
+     pr_info("%s entering spislave_mmap size-%d \n",DRIVER_NAME,size);
+    page = virt_to_page((unsigned long)kmalloc_rx_area + (vma->vm_pgoff << PAGE_SHIFT)); 
+    ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(page), size, vma->vm_page_prot);
+    if (ret != 0) {
+        goto out;
+    }   
 
-        {
-			pr_info("offset not aligned: %ld\n", offset);
-			return -ENXIO;
-
-        }
-        
-        if (size/4 >TRANSFER_BUF_SIZE) //??rigth check?
-        {
-			pr_info("size too big %d\n",size);
-			return(-ENXIO);
-
-        }
-	/* we only support shared mappings. Copy on write mappings are
-
-	   rejected here. A shared mapping that is writeable must have the
-
-	   shared flag set.
-	*/
-
-	if ((vma->vm_flags & VM_WRITE) && !(vma->vm_flags & VM_SHARED))
-	{
-	     pr_info("writeable mappings must be shared, rejecting\n");
-	     return(-EINVAL);
-
-	}
-	/* we do not want to have this area swapped out, lock it */
-	vma->vm_flags |= VM_LOCKED;
-
-    if (ioremap_page_range(vma->vm_start,virt_to_phys((void*)((unsigned long)kmalloc_rx_area)),size,PAGE_SHARED))
-	{
-		pr_info("remap page range failed\n");
-		return -ENXIO;
-	}
-	pr_info("spislave_mmap ok SIZE=%d, offset=%d\n",size,offset);
+pr_info("spislave_mmap OK SIZE=%d\n",size);
+    return ret;
+out:
+pr_info("spislave_mmap failed  SIZE=%d\n",size);
+    return ret;
+	
 }
 
 
@@ -1533,13 +1527,28 @@ static int spislave_release(struct inode *inode, struct file *filp)
 {
 	int					ret = 0;
 	struct spi_slave			*slave;
-
+    u32					l;
 	slave = filp->private_data;
 	filp->private_data = NULL;
+    pr_info("%s: spislave_release enter\n", DRIVER_NAME);
+	
+	slave->users--;
+
+//to reset controler
+
+	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSCONFIG);
+
+	l |= MCSPI_SYSCONFIG_SOFTRESET;
+	
+	mcspi_slave_write_reg(slave->base, MCSPI_SYSCONFIG, l);
+ 
+      
+  //  while (!mcspi_slave_wait_for_bit(slave->base + MCSPI_SYSSTATUS,
+	//				      MCSPI_SYSSTATUS_RESETDONE) ) 		
+	//					  	 ;
+  
 
 	mcspi_slave_clr_transfer(slave);
-
-	slave->users--;
 
 	pr_info("%s: release\n", DRIVER_NAME);
 	return ret;
@@ -1681,7 +1690,7 @@ static unsigned int spislave_event_poll(struct file *filp,
 	
 	
 
-	//pr_info("%s: POLL method end returning %d!!\n", DRIVER_NAME,events);
+	pr_info("%s: POLL method end returning %d!!\n", DRIVER_NAME,events);
 
 	return events;
 }
@@ -1693,7 +1702,7 @@ static const struct file_operations spislave_fops = {
 	.write		= spislave_write,
 	.release	= spislave_release,
 	.unlocked_ioctl = spislave_ioctl,
-//	.mmap       = spislave_mmap,
+	.mmap       = spislave_mmap,
 	.poll		= spislave_event_poll,
 };
 
