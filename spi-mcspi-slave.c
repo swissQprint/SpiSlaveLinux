@@ -625,7 +625,7 @@ static void mcspi_slave_dma_tx_callback(void *data)
 	pr_info("%s: mcspi_slave_dma_tx_callback :: end of DMA tx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 0);
-//	mcspi_slave_disable(slave);///???need it? try to comment
+	//dont call mcspi_slave_disable ,only in RT callback
 
 	complete(&dma_channel->dma_tx_completion);
 
@@ -648,7 +648,7 @@ static void mcspi_slave_dma_rx_callback(void *data)
 	pr_info("%s: mcspi_slave_dma_rx_callback -> end of DMA rx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 1);
-//	mcspi_slave_disable(slave);
+
 
 	complete(&dma_channel->dma_rx_completion);
 
@@ -664,17 +664,16 @@ static void mcspi_slave_dma_rx_callback(void *data)
 	mcspi_slave_write_reg(slave->base, MCSPI_CH0CONF, l);
 	pr_info("%s: mcspi_slave_dma_rx_callback - disabling FIFO->MCSPI_CH0CONF:0x%x\n", DRIVER_NAME, l);
 
-
-    pr_info("%s: mcspi_slave_dma_rx_callback -> unmaped single \n", DRIVER_NAME);
 	pr_info("%s: mcspi_slave_dma_rx_callback -> Waking client!!! \n", DRIVER_NAME);
 
 	dma_sync_single_for_cpu(slave->dev,
 					dma_channel->rx_dma_addr, slave->len, DMA_FROM_DEVICE);
 	//for poll to exit
-	slave->rx_offset = slave->len;//to do change to length
+	slave->rx_offset = slave->len;
 	wake_up_interruptible(&slave->wait);
-	mcspi_slave_disable(slave);  //maybe here???
-	pr_info("%s: mcspi_slave_dma_rx_callback -> called  wake_up_interruptible\n", DRIVER_NAME);
+	//mcspi_slave_disable(slave); 
+	pr_info("%s: mcspi_slave_dma_rx_callback -> called  wake_up_interruptible - exiting\n", DRIVER_NAME);
+	//mcspi_slave_disable(slave);
 }
 
 static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
@@ -690,17 +689,7 @@ static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
 	tx_desc = dma_channel->tx_desc;
 
 
-   /* pr_info("%s: mcspi_slave_set_irq:: set interrupt\n", DRIVER_NAME);
-
-	l = mcspi_slave_read_reg(slave->base, MCSPI_IRQENABLE);
-
-	
-	l |= MCSPI_IRQ_EOW;
-
-	pr_info("%s: MCSPI_IRQENABLE:0x%x\n", DRIVER_NAME, l);
-
-	mcspi_slave_write_reg(slave->base, MCSPI_IRQENABLE, l);*/
-
+  
 
 	pr_info("%s: mcspi_slave_dma_tx_transfer ----> tx dma transfer\n", DRIVER_NAME);
 
@@ -828,7 +817,7 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
 	xferlevel = wcnt << 16;
     xferlevel |= (bytes_per_word - 1) << 8;
 	xferlevel |= bytes_per_word - 1;
-	
+	pr_info("%s: mcspi_slave_setup_dma_transfer - MCSPI_XFERLEVEL:0x%x\n", DRIVER_NAME, xferlevel);
 	mcspi_slave_write_reg(slave->base, MCSPI_XFERLEVEL, xferlevel);
 
 	//enable fifo
