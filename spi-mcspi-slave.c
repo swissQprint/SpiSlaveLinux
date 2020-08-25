@@ -622,7 +622,7 @@ static void mcspi_slave_dma_tx_callback(void *data)
 	slave = (struct spi_slave *) data;
 	dma_channel = &slave->dma_channel;
 
-	pr_info("%s: mcspi_slave_dma_tx_callback :: end of DMA tx transfer\n", DRIVER_NAME);
+	pr_info("%s: mcspi_slave_dma_tx_callback :: ----------------------------->end of DMA tx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 0);
 	//dont call mcspi_slave_disable ,only in RT callback
@@ -645,7 +645,7 @@ static void mcspi_slave_dma_rx_callback(void *data)
 	slave = (struct spi_slave *) data;
 	dma_channel = &slave->dma_channel;
 
-	pr_info("%s: mcspi_slave_dma_rx_callback -> end of DMA rx transfer\n", DRIVER_NAME);
+	pr_info("%s: mcspi_slave_dma_rx_callback --------------------------< end of DMA rx transfer\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 1);
 
@@ -740,6 +740,20 @@ err_dma:
 	return -ENOMEM;
 }
 
+
+static int mcspi_slave_start_first_dma(struct spi_slave *slave)
+{
+	int					ret = 0;
+
+	pr_info("%s: mcspi_slave_start_first_dma ", DRIVER_NAME);
+    slave->first_dma_started = true;
+	mcspi_slave_enable(slave);
+	mcspi_slave_dma_request_enable(slave, 0);  //Tx
+	mcspi_slave_dma_request_enable(slave, 1);  //check enabling now!!! for Rx
+    pr_info("%s: mcspi_slave_start_first_dma - enabling tx/rx dma channels", DRIVER_NAME);
+	return ret;
+}
+
 static int mcspi_slave_dma_rx_transfer(struct spi_slave *slave)
 {
 	struct spi_slave_dma			*dma_channel;
@@ -780,9 +794,9 @@ pr_info("%s: mcspi_slave_dma_rx_transfer  step 4 .tx_submit \n", DRIVER_NAME);
 
 pr_info("%s: mcspi_slave_dma_rx_transfer  step 5 .dma_async_issue_pending \n", DRIVER_NAME);
 	dma_async_issue_pending(dma_channel->dma_rx);
-	mcspi_slave_dma_request_enable(slave, 1);
-pr_info("%s: mcspi_slave_dma_rx_transfer OK ->waiting for completion\n", DRIVER_NAME); 
-  if(slave->first_dma_started )
+	//mcspi_slave_dma_request_enable(slave, 1);  //rx
+	//mcspi_slave_dma_request_enable(slave, 1);
+    if(slave->first_dma_started )
 	{
 		mcspi_slave_dma_request_enable(slave, 1);  //rx
 		/*pr_info("%s: mcspi_slave_dma_rx_transfer waiting for request to comlete............... \n", DRIVER_NAME);
@@ -970,14 +984,14 @@ static int mcspi_slave_setup_transfer(struct spi_slave *slave)
 static int mcspi_slave_clr_transfer(struct spi_slave *slave)
 {
 	int					ret = 0;
-
+    struct spi_slave_dma			*dma_channel;
 	pr_info("%s: mcspi_slave_clr_transfer clear transfer", DRIVER_NAME);
-
-	/*if (slave->tx != NULL)
-		kfree(slave->tx);
-
-	if (slave->rx != NULL)
-		kfree(slave->rx);*/
+	dma_channel = &slave->dma_channel;
+    dmaengine_terminate_sync(dma_channel->dma_rx);
+	dmaengine_terminate_sync(dma_channel->dma_tx);
+	//release user mode
+	//slave->rx_offset = slave->len;
+	//wake_up_interruptible(&slave->wait);
 
 	mcspi_slave_disable(slave);
 
@@ -1489,7 +1503,7 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 	pr_info("%s: write count:%d\n", DRIVER_NAME, count);
 	slave->tx_offset = 0;
 
-	mcspi_slave_enable(slave);
+	//mcspi_slave_enable(slave); //????rigth??
 
 	if (SPI_TRANSFER_MODE == SPI_DMA_MODE)
 		mcspi_slave_dma_tx_transfer(slave);
@@ -1580,20 +1594,6 @@ static int spislave_open(struct inode *inode, struct file *filp)
 	init_waitqueue_head(&slave->wait);
 
 	pr_info("%s: open\n", DRIVER_NAME);
-	return ret;
-}
-
-
-static int mcspi_slave_start_first_dma(struct spi_slave *slave)
-{
-	int					ret = 0;
-
-	pr_info("%s: mcspi_slave_start_first_dma ", DRIVER_NAME);
-    slave->first_dma_started = true;
-	mcspi_slave_enable(slave);
-	mcspi_slave_dma_request_enable(slave, 0);  //Tx
-	mcspi_slave_dma_request_enable(slave, 1);  //check enabling now!!! for Rx
-    pr_info("%s: mcspi_slave_start_first_dma - enabling tx/rx dma channels", DRIVER_NAME);
 	return ret;
 }
 
