@@ -630,7 +630,7 @@ static void mcspi_slave_dma_tx_callback(void *data)
 
 	dma_unmap_single(slave->dev, dma_channel->tx_dma_addr, slave->len,
 			 DMA_TO_DEVICE);
-	pr_info("%s: mcspi_slave_dma_tx_callback :: unmaped single\n", DRIVER_NAME);
+	pr_info("%s: mcspi_slave_dma_tx_callback :: unmaped  <<TX>> single\n", DRIVER_NAME);
 
 
    
@@ -654,6 +654,7 @@ static void mcspi_slave_dma_rx_callback(void *data)
 	dma_unmap_single(slave->dev, dma_channel->rx_dma_addr, slave->len,
 			 DMA_FROM_DEVICE);
 
+    pr_info("%s: mcspi_slave_dma_Rx_callback :: unmaped  >>RX<<  single\n", DRIVER_NAME);
     //disable fifo
 	l = mcspi_slave_read_reg(slave->base, MCSPI_CH0CONF);
 
@@ -883,6 +884,7 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave)
 			pr_err("%s:mapping tx dma error!\n", DRIVER_NAME);
 			return -EINVAL;
 		}
+		pr_info("%s:  mcspi_slave_setup_dma_transfer <<TX>> channel is mapped!\n", DRIVER_NAME);
 
 	}
 pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for tx_buf\n", DRIVER_NAME);
@@ -898,6 +900,7 @@ pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for tx_buf\n
 			pr_err("%s:mapping rx dma error!\n", DRIVER_NAME);
 			return -EINVAL;
 		}
+			pr_info("%s:  mcspi_slave_setup_dma_transfer >>RX<< channel is mapped!\n", DRIVER_NAME);
 
 	}
 pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for rx_buf\n", DRIVER_NAME);
@@ -1068,14 +1071,14 @@ static void mcspi_slave_set_cs(struct spi_slave *slave)
 	mcspi_slave_write_reg(slave->base, MCSPI_MODULCTRL, l);
 }
 
-static int mcspi_slave_request_dma(struct spi_slave *slave)
+static int mcspi_slave_allocate_dma_chann_and_buffers(struct spi_slave *slave)
 {
 	dma_cap_mask_t				mask;
 	struct spi_slave_dma			*dma_channel;
 
 	dma_channel = &slave->dma_channel;
 
-	pr_info("%s: mcspi_slave_request_dma request dma\n", DRIVER_NAME);
+	pr_info("%s: mcspi_slave_allocate_dma_chann_and_buffers request dma\n", DRIVER_NAME);
 
 	init_completion(&dma_channel->dma_tx_completion);
 	init_completion(&dma_channel->dma_rx_completion);
@@ -1090,7 +1093,7 @@ static int mcspi_slave_request_dma(struct spi_slave *slave)
 	if (dma_channel->dma_rx == NULL)
 		goto no_dma;
 
-pr_info("%s: mcspi_slave_request_dma for dma_rx OK\n", DRIVER_NAME);
+pr_info("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_rx OK\n", DRIVER_NAME);
 	dma_channel->dma_tx = dma_request_slave_channel_compat(mask,
 			      omap_dma_filter_fn, NULL, slave->dev,
 			      "tx0");
@@ -1124,7 +1127,7 @@ pr_info("%s: mcspi_slave_request_dma for dma_rx OK\n", DRIVER_NAME);
 	}
 
 
-pr_info("%s: mcspi_slave_request_dma for dma_tx OK\n", DRIVER_NAME);
+pr_info("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_tx OK\n", DRIVER_NAME);
 	return 0;
 
 no_dma:
@@ -1132,7 +1135,7 @@ no_dma:
 	return -EAGAIN;
 }
 
-static int mcspi_slave_setup(struct spi_slave *slave)
+static int mcspi_slave_setup_on_probe(struct spi_slave *slave)
 {
 	int					ret = 0;
 	u32					l;
@@ -1173,8 +1176,8 @@ static int mcspi_slave_setup(struct spi_slave *slave)
 		if (SPI_TRANSFER_MODE == SPI_DMA_MODE  &&
 		   (slave->dma_channel.dma_rx == NULL ||
 		    slave->dma_channel.dma_tx == NULL))  {
-			pr_info("%s: mcspi_slave_setup calling mcspi_slave_request_dma\n", DRIVER_NAME);
-			ret = mcspi_slave_request_dma(slave);
+			pr_info("%s: mcspi_slave_setup calling mcspi_slave_allocate_dma_chann_and_buffers\n", DRIVER_NAME);
+			ret = mcspi_slave_allocate_dma_chann_and_buffers(slave);
 
 			if (ret < 0 && ret != -EAGAIN) {
 				pr_err("%s: DMA isn't avilable\n", DRIVER_NAME);
@@ -1202,7 +1205,7 @@ static void mcspi_slave_clean_up(struct spi_slave *slave)
 	if (slave->rx != NULL)
 		kfree(slave->rx);
 	
-
+    pr_info("%s:  mcspi_slave_clean_up:: clean up - freed memory\n", DRIVER_NAME);
 	if (slave->dma_channel.dma_tx) {
 		dma_release_channel(slave->dma_channel.dma_tx);
 		slave->dma_channel.dma_tx = NULL;
@@ -1212,8 +1215,9 @@ static void mcspi_slave_clean_up(struct spi_slave *slave)
 		dma_release_channel(slave->dma_channel.dma_rx);
 		slave->dma_channel.dma_rx = NULL;
 	}
-
+    pr_info("%s:  mcspi_slave_clean_up:: clean up - released channels\n", DRIVER_NAME);
 	kfree(slave);
+	pr_info("%s:  mcspi_slave_clean_up:: clean up - END\n", DRIVER_NAME);
 }
 
  /* default platform value located in .h file*/
@@ -1360,7 +1364,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto disable_pm;
 
-	ret = mcspi_slave_setup(slave);
+	ret = mcspi_slave_setup_on_probe(slave);
 	if (ret < 0)
 		goto disable_pm;
 
@@ -1569,13 +1573,13 @@ static int spislave_release(struct inode *inode, struct file *filp)
 	
 	slave->users--;
 
-//to reset controler
+//to reset controler - dosnt work
 
-	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSCONFIG);
+//	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSCONFIG);
 
-	l |= MCSPI_SYSCONFIG_SOFTRESET;
+	//l |= MCSPI_SYSCONFIG_SOFTRESET;
 	
-	mcspi_slave_write_reg(slave->base, MCSPI_SYSCONFIG, l);
+//	mcspi_slave_write_reg(slave->base, MCSPI_SYSCONFIG, l);
  
       
   //  while (!mcspi_slave_wait_for_bit(slave->base + MCSPI_SYSSTATUS,
