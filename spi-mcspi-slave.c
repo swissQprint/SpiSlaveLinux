@@ -225,11 +225,10 @@ struct spi_slave {
 
 //mem mapping for rt buffer
 void __iomem  *kmalloc_rx_area ;  /* pointer to page aligned area */
-//int *kmalloc_rx_ptr; /* pointer to unaligned area */
-//mem mapping for tr buffer
-static int *kmalloc_tx_area;  /* pointer to page aligned area */
-//int *kmalloc_tx_pt; /* pointer to unaligned area */
-	
+
+static int *kmalloc_debug;  /* pointer to page aligned area */
+
+static int debug_counter = 0;	
 
 static inline unsigned int mcspi_slave_read_reg(void __iomem *base, u32 idx)
 {
@@ -1455,9 +1454,19 @@ static ssize_t spislave_read(struct file *flip, char __user *buf, size_t count,
 	pr_info("%s: read end count:%d rx_offset:%d\n", DRIVER_NAME,
 		error_count, slave->rx_offset);
 
+    //test
+    debug_counter++;
+	 pr_info("%s: spislave_read <<<<<< debug counter is %d>>>>>>>>>\n", DRIVER_NAME,debug_counter);
+	 pr_info("%s: spislave_read   %8X \n", DRIVER_NAME,kmalloc_debug[0]);
+	 pr_info("%s: spislave_read   %8X \n", DRIVER_NAME,kmalloc_debug[1]);
+	 pr_info("%s: spislave_read   %8X \n", DRIVER_NAME,kmalloc_debug[254]);
+	 pr_info("%s: spislave_read   %8X \n", DRIVER_NAME,kmalloc_debug[255]);
+	
 	/*after read clear receive buffer*/
 	slave->rx_offset = 0;
 	memset(slave->rx, 0, TRANSFER_BUF_SIZE);
+
+	
 
 	if (error_count == 0)
 		return 0;
@@ -1534,6 +1543,10 @@ static int spislave_mmap(struct file *file, struct vm_area_struct *vma)
     if (ret != 0) {
         goto out;
     }   
+
+	//for debug
+
+    kmalloc_debug = kmalloc_rx_area;
 
 pr_info("spislave_mmap OK SIZE=%d\n",size);
     return ret;
