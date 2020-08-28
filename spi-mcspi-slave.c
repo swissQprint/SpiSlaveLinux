@@ -227,6 +227,7 @@ struct spi_slave {
 void __iomem  *kmalloc_rx_area ;  /* pointer to page aligned area */
 
 static int *kmalloc_debug;  /* pointer to page aligned area */
+static int *kmalloc_debug2; 
 
 static int debug_counter = 0;	
 
@@ -626,13 +627,14 @@ static void mcspi_slave_dma_tx_callback(void *data)
 	mcspi_slave_dma_request_disable(slave, 0);
 	//dont call mcspi_slave_disable ,only in RT callback
 
-	complete(&dma_channel->dma_tx_completion);
+	
 
-	dma_unmap_single(slave->dev, dma_channel->tx_dma_addr, slave->len,
-			 DMA_TO_DEVICE);
+	//dma_unmap_single(slave->dev, dma_channel->tx_dma_addr, slave->len,
+	//		 DMA_TO_DEVICE);
 	pr_info("%s: mcspi_slave_dma_tx_callback :: unmaped  <<TX>> single\n", DRIVER_NAME);
 
-
+    
+    complete(&dma_channel->dma_tx_completion);
    
 }
 
@@ -644,15 +646,15 @@ static void mcspi_slave_dma_rx_callback(void *data)
 	slave = (struct spi_slave *) data;
 	dma_channel = &slave->dma_channel;
 
-	pr_info("%s: mcspi_slave_dma_rx_callback --------------------------< end of DMA rx transfer\n", DRIVER_NAME);
+	pr_info("%s: mcspi_slave_dma_rx_callback --------------------------< end of DMA rx transfer(ver 1)\n", DRIVER_NAME);
 
 	mcspi_slave_dma_request_disable(slave, 1);
 
 
-	complete(&dma_channel->dma_rx_completion);
 
-	dma_unmap_single(slave->dev, dma_channel->rx_dma_addr, slave->len,
-			 DMA_FROM_DEVICE);
+
+	//dma_unmap_single(slave->dev, dma_channel->rx_dma_addr, slave->len,
+	//		 DMA_FROM_DEVICE);
 
     pr_info("%s: mcspi_slave_dma_Rx_callback :: unmaped  >>RX<<  single\n", DRIVER_NAME);
     //disable fifo
@@ -666,14 +668,16 @@ static void mcspi_slave_dma_rx_callback(void *data)
 
 	pr_info("%s: mcspi_slave_dma_rx_callback -> Waking client!!! \n", DRIVER_NAME);
 
-	dma_sync_single_for_cpu(slave->dev,
-					dma_channel->rx_dma_addr, slave->len, DMA_FROM_DEVICE);
+	//dma_sync_single_for_cpu(slave->dev,
+	//				dma_channel->rx_dma_addr, slave->len, DMA_FROM_DEVICE);
 	//for poll to exit
 	slave->rx_offset = slave->len;
 	wake_up_interruptible(&slave->wait);
 	//mcspi_slave_disable(slave); 
-	pr_info("%s: mcspi_slave_dma_rx_callback -> called  wake_up_interruptible - exiting\n", DRIVER_NAME);
+	pr_info("%s: mcspi_slave_dma_rx_callback -> called  wake_up_interruptible(222) - exiting\n", DRIVER_NAME);
 	//mcspi_slave_disable(slave);
+//	dmaengine_terminate_all(dma_channel->dma_rx);
+	complete(&dma_channel->dma_rx_completion);
 }
 
 static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
@@ -688,8 +692,7 @@ static int mcspi_slave_dma_tx_transfer(struct spi_slave *slave)
 	config = &dma_channel->config;
 	tx_desc = dma_channel->tx_desc;
 
-
-  
+ 
 
 	pr_info("%s: mcspi_slave_dma_tx_transfer ----> tx dma transfer\n", DRIVER_NAME);
 
@@ -706,6 +709,9 @@ pr_info("%s: mcspi_slave_dma_tx_transfer ----> step 2. dmaengine_slave_config\n"
 pr_info("%s: mcspi_slave_dma_tx_transfer ----> step 3. dmaengine_prep_slave_sg\n", DRIVER_NAME);
    dma_sync_single_for_device(slave->dev,
 					   dma_channel->tx_dma_addr, slave->len, DMA_TO_DEVICE);
+
+    
+	
 	tx_desc = dmaengine_prep_slave_sg(dma_channel->dma_tx,
 					  &dma_channel->sg_tx, 1,
 					  DMA_MEM_TO_DEV,
@@ -723,7 +729,7 @@ pr_info("%s: mcspi_slave_dma_tx_transfer ----> step 4. tx_submit\n", DRIVER_NAME
 		goto err_dma;
 
 pr_info("%s: mcspi_slave_dma_tx_transfer ----> step 4. dma_async_issue_pending\n", DRIVER_NAME);
-	dma_async_issue_pending(dma_channel->dma_tx);
+	/*dma_async_issue_pending(dma_channel->dma_tx);
 	if(slave->first_dma_started )
 	{
 		mcspi_slave_dma_request_enable(slave, 0);  //Tx
@@ -732,8 +738,9 @@ pr_info("%s: mcspi_slave_dma_tx_transfer ----> step 4. dma_async_issue_pending\n
 	else
 	{
 		pr_info("%s: mcspi_slave_dma_tx_transfer waiting for First DMA @@@@@@@@@@@@@@@\n", DRIVER_NAME); 
-	}
+	}*/
   pr_info("%s: mcspi_slave_dma_tx_transfer OK\n", DRIVER_NAME); 
+
 	return ret;
 err_dma:
 	pr_err("%s: transfer tx error\n", DRIVER_NAME);
@@ -764,6 +771,7 @@ static int mcspi_slave_dma_rx_transfer(struct spi_slave *slave)
 
 	dma_channel = &slave->dma_channel;
 	config = &dma_channel->config;
+	rx_desc = dma_channel->rx_desc;
 
 	pr_info("%s: mcspi_slave_dma_rx_transfer <----- rx dma transfer\n", DRIVER_NAME);
 
@@ -776,6 +784,8 @@ pr_info("%s: mcspi_slave_dma_rx_transfer  step 2.dmaengine_slave_config \n", DRI
 	sg_dma_address(&dma_channel->sg_rx) = dma_channel->rx_dma_addr;
 	sg_dma_len(&dma_channel->sg_rx) = slave->len;
 pr_info("%s: mcspi_slave_dma_rx_transfer  step 3.dmaengine_prep_slave_sg \n", DRIVER_NAME);
+
+    
 	rx_desc = dmaengine_prep_slave_sg(dma_channel->dma_rx,
 					  &dma_channel->sg_rx, 1,
 					  DMA_DEV_TO_MEM,
@@ -793,28 +803,24 @@ pr_info("%s: mcspi_slave_dma_rx_transfer  step 4 .tx_submit \n", DRIVER_NAME);
 		goto err_dma;
 
 pr_info("%s: mcspi_slave_dma_rx_transfer  step 5 .dma_async_issue_pending \n", DRIVER_NAME);
-	dma_async_issue_pending(dma_channel->dma_rx);
-	//mcspi_slave_dma_request_enable(slave, 1);  //rx
-	//mcspi_slave_dma_request_enable(slave, 1);
+/*	dma_async_issue_pending(dma_channel->dma_rx);
+	
     if(slave->first_dma_started )
 	{
 		mcspi_slave_dma_request_enable(slave, 1);  //rx
-		/*pr_info("%s: mcspi_slave_dma_rx_transfer waiting for request to comlete............... \n", DRIVER_NAME);
+		pr_info("%s: mcspi_slave_dma_rx_transfer waiting for request to comlete............... \n", DRIVER_NAME);
 		ret = mcspi_wait_for_completion( &dma_channel->dma_rx_completion);
-		if (ret) 
-		{
-			pr_info("%s: mcspi_slave_dma_rx_transfer :: wait aborted\n", DRIVER_NAME); 
-			dmaengine_terminate_sync(dma_channel->dma_rx);
-			mcspi_slave_dma_request_disable(slave, 1);
-			return 0;
-		}*/
+
+			
 	}
 	else
 	{
 		pr_info("%s: mcspi_slave_dma_rx_transfer waiting for First DMA @@@@@@@@@@@@@@@\n", DRIVER_NAME); 
 
-	}
+	}*/
 
+
+    
 	return ret;
 
 err_dma:
@@ -928,8 +934,8 @@ pr_info("%s:  mcspi_slave_setup_dma_transfer step 1. dma_map_single for rx_buf\n
 	config->dst_maxburst = burst;
     reinit_completion(&dma_channel->dma_tx_completion);
 	reinit_completion(&dma_channel->dma_rx_completion);
-pr_info("%s:  mcspi_slave_setup_dma_transfer step:: calling mcspi_slave_dma_rx_transfer width=%d\n", DRIVER_NAME,width);
-	mcspi_slave_dma_rx_transfer(slave);
+//pr_info("%s:  mcspi_slave_setup_dma_transfer step:: calling mcspi_slave_dma_rx_transfer width=%d\n", DRIVER_NAME,width);
+//	mcspi_slave_dma_rx_transfer(slave);
 
 	return ret;
 }
@@ -994,6 +1000,11 @@ static int mcspi_slave_clr_transfer(struct spi_slave *slave)
 	//release user mode
 	//slave->rx_offset = slave->len;
 	//wake_up_interruptible(&slave->wait);
+    dma_unmap_single(slave->dev, slave->dma_channel.tx_dma_addr, slave->len,
+			 DMA_TO_DEVICE);
+	
+	dma_unmap_single(slave->dev, slave->dma_channel.rx_dma_addr, slave->len,
+			 DMA_FROM_DEVICE);
 
 	mcspi_slave_disable(slave);
 
@@ -1199,6 +1210,12 @@ static void mcspi_slave_clean_up(struct spi_slave *slave)
 
 	tasklet_kill(&pio_rx_tasklet);
 
+   /* dma_unmap_single(slave->dev, slave->dma_channel.tx_dma_addr, slave->len,
+			 DMA_TO_DEVICE);
+	
+	dma_unmap_single(slave->dev, slave->dma_channel.rx_dma_addr, slave->len,
+			 DMA_FROM_DEVICE);
+*/
    if (slave->tx != NULL)
 		kfree(slave->tx);
 
@@ -1486,7 +1503,6 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 	struct spi_slave			*slave;
 	unsigned long				missing;
 	
-	
     
 	pr_info("%s: spislave_write:: \n", DRIVER_NAME);
 	slave = flip->private_data;
@@ -1513,16 +1529,51 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 		return -EFAULT;
 
 
+     debug_counter++;
+	 kmalloc_debug2 = slave->tx;
+	 pr_info("%s: spislave_write <<<<<< debug counter is %d>>>>>>>>>\n", DRIVER_NAME,debug_counter);
+	 pr_info("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[0]);
+	 pr_info("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[1]);
+	 pr_info("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[254]);
+	 pr_info("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[255]);
 	pr_info("%s: write count:%d\n", DRIVER_NAME, count);
 	slave->tx_offset = 0;
 
 	//mcspi_slave_enable(slave); //????rigth??
 
 	if (SPI_TRANSFER_MODE == SPI_DMA_MODE)
+	{
 		mcspi_slave_dma_tx_transfer(slave);
+		mcspi_slave_dma_rx_transfer(slave);
+
+
+    	dma_async_issue_pending(slave->dma_channel.dma_rx);
+	    dma_async_issue_pending(slave->dma_channel.dma_tx);
+		if(slave->first_dma_started )
+		{
+			mcspi_slave_dma_request_enable(slave, 1);  //rx
+			mcspi_slave_dma_request_enable(slave, 0);  //Tx
+				
+		}
+	
+
+		//wait for tx to complete
+		if(slave->first_dma_started )
+		{
+			
+			//ret = mcspi_wait_for_completion( &slave->dma_channel.dma_tx_completion);
+			ret = mcspi_wait_for_completion( &slave->dma_channel.dma_rx_completion);
+
+			//sync
+		    dma_sync_single_for_cpu(slave->dev,
+					slave->dma_channel.rx_dma_addr, slave->len, DMA_FROM_DEVICE);
+		}
+	}
 	else
 		mcspi_slave_pio_tx_transfer(slave, count);
 
+
+  
 	return ret;
 }
 
