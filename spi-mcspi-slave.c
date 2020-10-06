@@ -229,6 +229,7 @@ struct spi_slave {
 
 //mem mapping for rt buffer
 void __iomem  *kmalloc_rx_area ;  /* pointer to page aligned area */
+void __iomem  *kmalloc_tx_area ;  /* pointer to page aligned area */
 
 static int *kmalloc_debug;  /* pointer to page aligned area */
 static int *kmalloc_debug2; 
@@ -1129,26 +1130,27 @@ pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_rx OK\n", DRIVE
 		goto no_dma;
 	}
 
-	if (slave->mode == MCSPI_MODE_TM || slave->mode == MCSPI_MODE_TRM) {
-		slave->tx = kzalloc(PAGE_SIZE*2, GFP_KERNEL);
-		if (slave->tx == NULL)
-			return -ENOMEM;
-
-		pr_debug("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
-			
-		pr_debug("%s:  mcspi_slave_setup mapped to  kmalloc_tx_area\n", DRIVER_NAME);
+	
 		
-	}
+		
 
-	if (slave->mode == MCSPI_MODE_RM || slave->mode == MCSPI_MODE_TRM) {
+
+		
 		slave->rx = kzalloc(PAGE_SIZE*2, GFP_KERNEL);
 		if (slave->rx == NULL)
 			return -ENOMEM;
-		pr_debug("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
+		 pr_debug("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
 			
 		 kmalloc_rx_area = slave->rx ;
 		 pr_debug("%s:  mcspi_slave_setup mapped to  kmalloc_rx_area\n", DRIVER_NAME);
-	}
+
+		
+
+		pr_debug("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
+		slave->tx = slave->rx + PAGE_SIZE;
+		kmalloc_tx_area = slave->tx ;	
+		pr_debug("%s:  mcspi_slave_setup mapped to  kmalloc_tx_area\n", DRIVER_NAME);
+	
 
 
 pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_tx OK\n", DRIVER_NAME);
@@ -1223,8 +1225,8 @@ static void mcspi_slave_clean_up(struct spi_slave *slave)
 	tasklet_kill(&pio_rx_tasklet);
 
  
-   if (slave->tx != NULL)
-		kfree(slave->tx);
+   /*if (slave->tx != NULL)
+		kfree(slave->tx);*/
 
 	if (slave->rx != NULL)
 		kfree(slave->rx);
@@ -1519,25 +1521,25 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 		return -ENOMEM;
 	}
 
-	memset(slave->tx, 0, TRANSFER_BUF_SIZE);
+	//memset(slave->tx, 0, TRANSFER_BUF_SIZE);
 
 	
 
-    pr_debug("%s: spislave_write::  copyng buffer from user to  TX buffer\n", DRIVER_NAME);
+    //pr_debug("%s: spislave_write::  copyng buffer from user to  TX buffer\n", DRIVER_NAME);
 	
 	
 	
 
-	missing = copy_from_user(slave->tx, buf, count);
+	/*missing = copy_from_user(slave->tx, buf, count);
 
 	if (missing == 0)
 		ret = count;
 	else
-		return -EFAULT;
+		return -EFAULT;*/
 
 
      debug_counter++;
-	 kmalloc_debug2 = slave->tx;
+	// kmalloc_debug2 = slave->tx;
 	 pr_debug("%s: spislave_write <<<<<< debug counter is %d>>>>>>>>>\n", DRIVER_NAME,debug_counter);
 	 pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[0]);
 	 pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[1]);
@@ -1604,16 +1606,35 @@ static int spislave_mmap(struct file *file, struct vm_area_struct *vma)
         ret = -EINVAL;
         goto out;  
     } 
-     pr_debug("%s entering spislave_mmap size-%d \n",DRIVER_NAME,size);
-    page = virt_to_page((unsigned long)kmalloc_rx_area + (vma->vm_pgoff << PAGE_SHIFT)); 
-    ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(page), size, vma->vm_page_prot);
-    if (ret != 0) {
-        goto out;
-    }   
+     pr_info("%s entering spislave_mmap size-%d  page offset %d\n",DRIVER_NAME,size,vma->vm_pgoff);
 
-	//for debug
+	    if(vma->vm_pgoff == 0)
+		{
+			page = virt_to_page((unsigned long)kmalloc_rx_area + (vma->vm_pgoff << PAGE_SHIFT)); 
+			ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(page), size, vma->vm_page_prot);
+			if (ret != 0) {
+				goto out;
+			}   
 
-    kmalloc_debug = kmalloc_rx_area;
+			//for debug
+
+			kmalloc_debug = kmalloc_rx_area;
+			pr_info("%s mapping read buffer to user mode -%d \n",DRIVER_NAME,size);
+		}
+		else //1
+		{
+		
+			page = virt_to_page((unsigned long)kmalloc_rx_area + (vma->vm_pgoff << PAGE_SHIFT)); 
+			ret = remap_pfn_range(vma, vma->vm_start, page_to_pfn(page), size, vma->vm_page_prot);
+			if (ret != 0) {
+				goto out;
+			}   
+
+			//for debug
+
+			kmalloc_debug2 = kmalloc_tx_area;
+			pr_info("%s mapping write buffer to user mode -%d \n",DRIVER_NAME,size);
+		}
 
 pr_debug("spislave_mmap OK SIZE=%d\n",size);
     return ret;
@@ -1851,6 +1872,6 @@ module_init(mcspi_slave_init);
 module_exit(mcspi_slave_exit);
 
 MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("swissQprint");
+MODULE_AUTHOR("test");
 MODULE_DESCRIPTION("SPI slave for McSPI controller.");
 MODULE_VERSION("1.0");
