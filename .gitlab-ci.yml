@@ -1,0 +1,18 @@
+stages:
+  - package
+
+package-spiSlaveLinux:
+  image: registry.swissqprint.com/sqp/devops/runner/conan:0.3-debian
+  stage: package
+  tags:
+    - linux
+    - docker
+  only:
+    - tags
+  script:
+    - conan user -p AP65yNr4jrB9SRv6neyGv6kxnXs3KmuStoYJo4 -r inhouse gitlab -s
+    - conan remove libsqpSpiSlaveLinux -f
+    - conan create . sqp/release --update
+    - conan upload libsqpSpiSlaveLinux --all -r=inhouse -c
+
+

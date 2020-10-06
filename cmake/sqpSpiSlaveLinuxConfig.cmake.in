@@ -1,0 +1,7 @@
+get_filename_component(sqpSpiSlaveLinux_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+include(CMakeFindDependencyMacro)
+
+if(NOT TARGET sqpSpiSlaveLinux::sqpSpiSlaveLinux)
+    include("${sqpSpiSlaveLinux_CMAKE_DIR}/sqpSpiSlaveLinuxTargets.cmake")
+endif()
+
