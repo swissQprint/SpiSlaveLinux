@@ -12,7 +12,7 @@ package-spiSlaveLinux:
   script:
     - conan user -p AP65yNr4jrB9SRv6neyGv6kxnXs3KmuStoYJo4 -r inhouse gitlab -s
     - conan remove libsqpSpiSlaveLinux -f
-    - conan create . sqp/release --update
+    - conan create . sqp/release -pr linux64_x_armv7hf_gcc8_release --update
     - conan upload libsqpSpiSlaveLinux --all -r=inhouse -c
 
 
