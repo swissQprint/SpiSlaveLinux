@@ -1582,7 +1582,7 @@ pr_debug("%s: spislave_write  step 5 .dma_async_issue_pending for RX/TX \n", DRI
 	{
 		pr_debug("%s: spislave_write  ---waiting for DMa complete \n", DRIVER_NAME);
 		//ret = mcspi_wait_for_completion( &slave->dma_channel.dma_tx_completion);
-		ret = mcspi_wait_for_completion( &slave->dma_channel.dma_rx_completion);
+		//ret = mcspi_wait_for_completion( &slave->dma_channel.dma_rx_completion);
 		pr_debug("%s: spislave_write  ---DMa complete \n", DRIVER_NAME);
 	
 	}
