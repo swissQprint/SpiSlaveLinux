@@ -2,7 +2,7 @@ stages:
   - package
 
 package-spiSlaveLinux:
-  image: registry.swissqprint.com/sqp/devops/runner/conan:0.3-debian
+  image: registry.swissqprint.com/sqp/devops/runner/conan:0.4-py27-debian
   stage: package
   tags:
     - linux
