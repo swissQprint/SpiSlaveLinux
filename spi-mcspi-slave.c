@@ -941,7 +941,7 @@ static int mcspi_slave_setup_dma_transfer(struct spi_slave *slave,int do_mapping
 	return ret;
 }
 
-static int mcspi_slave_setup_transfer(struct spi_slave *slave)
+static int mcspi_slave_setup_transfer(struct spi_slave *slave,bool do_mapping)
 {
 	int					ret = 0;
 	u32					l;
@@ -982,7 +982,7 @@ static int mcspi_slave_setup_transfer(struct spi_slave *slave)
 
 
 	if (SPI_TRANSFER_MODE == SPI_DMA_MODE)
-		ret = mcspi_slave_setup_dma_transfer(slave,1);  //1-do mapping
+		ret = mcspi_slave_setup_dma_transfer(slave,do_mapping);  //1-do mapping
 	else
 		ret = mcspi_slave_setup_pio_transfer(slave);
 
@@ -1061,6 +1061,9 @@ static int mcspi_slave_start_first_dma(struct spi_slave *slave)
 	return ret;
 }
 
+
+
+
 static void mcspi_slave_set_cs(struct spi_slave *slave)
 {
 	u32					l;
@@ -1095,6 +1098,36 @@ static void mcspi_slave_set_cs(struct spi_slave *slave)
 
 	pr_debug("%s: mcspi_slave_set_cs  MCSPI_MODULCTRL:0x%x\n", DRIVER_NAME, l);
 	mcspi_slave_write_reg(slave->base, MCSPI_MODULCTRL, l);
+}
+
+static int mcspi_slave_reset_connection(struct spi_slave *slave)
+{
+	u32					l;
+
+	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSCONFIG);
+
+	l |= MCSPI_SYSCONFIG_SOFTRESET;
+	
+	mcspi_slave_write_reg(slave->base, MCSPI_SYSCONFIG, l);
+	/*verification status bit(0) in MCSPI system status register*/
+	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSSTATUS);
+
+	pr_debug("%s: MCSPI_SYSSTATUS:0x%x\n", DRIVER_NAME, l);
+
+
+		/*here set mcspi controller in slave mode and more setting*/
+		mcspi_slave_disable(slave);
+		mcspi_slave_set_slave_mode(slave);
+		mcspi_slave_set_cs(slave);
+		slave->first_dma_started = false;
+
+		
+	
+		
+	mcspi_slave_clr_transfer(slave);
+
+	mcspi_slave_setup_transfer(slave,1); // do mapping
+   
 }
 
 static int mcspi_slave_allocate_dma_chann_and_buffers(struct spi_slave *slave)
@@ -1582,11 +1615,11 @@ pr_debug("%s: spislave_write  step 5 .dma_async_issue_pending for RX/TX \n", DRI
 	{
 		pr_debug("%s: spislave_write  ---waiting for DMa complete \n", DRIVER_NAME);
 		//ret = mcspi_wait_for_completion( &slave->dma_channel.dma_tx_completion);
-		//ret = mcspi_wait_for_completion( &slave->dma_channel.dma_rx_completion);
+	//	ret = mcspi_wait_for_completion( &slave->dma_channel.dma_rx_completion);
 		pr_debug("%s: spislave_write  ---DMa complete \n", DRIVER_NAME);
 	
 	}
-
+    pr_debug("%s: spislave_write  ---END \n", DRIVER_NAME);
   
 	return ret;
 }
@@ -1657,15 +1690,15 @@ static int spislave_release(struct inode *inode, struct file *filp)
 	
 	slave->users--;
 
-//to reset controler - dosnt work
 
-//	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSCONFIG);
 
-	//l |= MCSPI_SYSCONFIG_SOFTRESET;
+/*	l = mcspi_slave_read_reg(slave->base, MCSPI_SYSCONFIG);
+
+	l |= MCSPI_SYSCONFIG_SOFTRESET;
 	
-//	mcspi_slave_write_reg(slave->base, MCSPI_SYSCONFIG, l);
+	mcspi_slave_write_reg(slave->base, MCSPI_SYSCONFIG, l);
  
-      
+      */
   //  while (!mcspi_slave_wait_for_bit(slave->base + MCSPI_SYSSTATUS,
 	//				      MCSPI_SYSSTATUS_RESETDONE) ) 		
 	//					  	 ;
@@ -1746,8 +1779,8 @@ static long spislave_ioctl(struct file *filp, unsigned int cmd,
 		ret = __put_user(slave->buf_depth, (__u32 __user *)arg);
 		break;
 
-	case SPISLAVE_ENABLED:
-		mcspi_slave_enable(slave);
+	case SPISLAVE_RESET:
+		mcspi_slave_reset_connection(slave);
 		break;
 
 	case SPISLAVE_DISABLED:
@@ -1755,7 +1788,7 @@ static long spislave_ioctl(struct file *filp, unsigned int cmd,
 		break;
 
 	case SPISLAVE_SET_TRANSFER:
-		mcspi_slave_setup_transfer(slave);
+		mcspi_slave_setup_transfer(slave,1); //do mapping
 		break;
 
 	case SPISLAVE_START_FIRST_DMA:
@@ -1874,4 +1907,4 @@ module_exit(mcspi_slave_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("swissQprint");
 MODULE_DESCRIPTION("SPI slave for McSPI controller.");
-MODULE_VERSION("1.0");
+MODULE_VERSION("3.0");
