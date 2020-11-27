@@ -12,7 +12,13 @@
 #include <linux/of.h>
 #include <linux/fs.h>
 #include <linux/ioctl.h>
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,13,0))
+#include <linux/uaccess.h>
+#else
 #include <asm/uaccess.h>
+#endif
+
 #include <linux/wait.h>
 #include <linux/poll.h>
 #include <linux/sched.h>
@@ -26,12 +32,15 @@
 
 #define DRIVER_NAME "spi-mcspi-slave"
 
-
 #include <linux/platform_data/spi-omap2-mcspi.h>
 
 #include "spi-slave-dev.h"
 
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0))
+#define ACCESS_OK(type, addr, size)     access_ok(addr, size)
+#else
+#define ACCESS_OK(type, addr, size)     access_ok(type, addr, size)
+#endif
 
 #define MCSPI_PIN_DIR_D0_IN_D1_OUT		0
 #define MCSPI_PIN_DIR_D0_OUT_D1_IN		1
