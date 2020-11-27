@@ -1154,17 +1154,24 @@ static int mcspi_slave_allocate_dma_chann_and_buffers(struct spi_slave *slave)
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_SLAVE, mask);
 
-	slave->dma_channel.dma_rx = dma_request_slave_channel_compat(mask,
-				    omap_dma_filter_fn, NULL, slave->dev,
-				    "rx0");
+	// TODO test:
+	// slave->dma_channel.dma_rx = dma_request_slave_channel_compat(mask,
+	// 			    omap_dma_filter_fn, NULL, slave->dev,
+	// 			    "rx0");
+	// config for channel should be taken from device tree, needs to be tested, 
+	// changed after omap_dma_filter_fn gave undefined reference
+	slave->dma_channel.dma_rx = dma_request_slave_channel(slave->dev, "rx0");
 
 	if (dma_channel->dma_rx == NULL)
 		goto no_dma;
 
 pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_rx OK\n", DRIVER_NAME);
-	dma_channel->dma_tx = dma_request_slave_channel_compat(mask,
-			      omap_dma_filter_fn, NULL, slave->dev,
-			      "tx0");
+	// TODO test:
+	// dma_channel->dma_tx = dma_request_slave_channel_compat(mask,
+	// 		      omap_dma_filter_fn, NULL, slave->dev,
+	// 		      "tx0");
+	// config for channel should be taken from device tree...
+	dma_channel->dma_tx = dma_request_slave_channel(slave->dev, "tx0");
 
 	if (dma_channel->dma_tx == NULL) {
 		dma_release_channel(dma_channel->dma_rx);
