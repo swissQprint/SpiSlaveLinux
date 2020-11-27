@@ -1759,11 +1759,11 @@ static long spislave_ioctl(struct file *filp, unsigned int cmd,
 		return -ENOTTY;
 
 	if (_IOC_DIR(cmd) & _IOC_READ)
-		err = !access_ok(VERIFY_WRITE,
+		err = !ACCESS_OK(VERIFY_WRITE,
 				 (void __user *)arg, _IOC_SIZE(cmd));
 
 	if (err == 0 && _IOC_DIR(cmd) & _IOC_WRITE)
-		err = !access_ok(VERIFY_WRITE,
+		err = !ACCESS_OK(VERIFY_WRITE,
 				 (void __user *)arg, _IOC_SIZE(cmd));
 
 	if (err)
