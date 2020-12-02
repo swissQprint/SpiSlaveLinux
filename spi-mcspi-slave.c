@@ -1304,7 +1304,7 @@ static struct omap2_mcspi_platform_config mcspi_slave_pdata = {
 static const struct of_device_id mcspi_slave_of_match[] = {
 	
 	{
-		.compatible = "linux,spi-mcspi-slave",
+		.compatible = "sqp,spi-mcspi-slave",
 		.data = &mcspi_slave_pdata,
 	},
 	{ }
@@ -1892,9 +1892,10 @@ static int __init mcspi_slave_init(void)
 	BUILD_BUG_ON(N_SPI_MINORS > 256);
 
 	ret = register_chrdev(SPISLAVE_MAJOR, "spi", &spislave_fops);
-	if (ret < 0)
+	if (ret < 0) {
 		pr_err("%s: register chrdev failed: %d\n", DRIVER_NAME, ret);
 		return ret;
+	}
 
 	spislave_class = class_create(THIS_MODULE, DRIVER_NAME);
 	if (IS_ERR(spislave_class)) {
@@ -1904,8 +1905,11 @@ static int __init mcspi_slave_init(void)
 	}
 
 	ret = platform_driver_register(&mcspi_slave_driver);
-	if (ret < 0)
+	if (ret < 0) {
+		class_unregister(spislave_class);
+		unregister_chrdev(SPISLAVE_MAJOR, DRIVER_NAME);
 		pr_err("%s: platform driver error\n", DRIVER_NAME);
+	}
 
 	pr_debug("%s: init done\n", DRIVER_NAME);
 
