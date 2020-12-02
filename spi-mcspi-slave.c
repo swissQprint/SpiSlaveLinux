@@ -1893,10 +1893,12 @@ static int __init mcspi_slave_init(void)
 
 	ret = register_chrdev(SPISLAVE_MAJOR, "spi", &spislave_fops);
 	if (ret < 0)
+		pr_err("%s: register chrdev failed: %d\n", DRIVER_NAME, ret);
 		return ret;
 
 	spislave_class = class_create(THIS_MODULE, DRIVER_NAME);
 	if (IS_ERR(spislave_class)) {
+		pr_err("%s: class_create failed: %d\n", DRIVER_NAME, PTR_ERR(spislave_class));
 		unregister_chrdev(SPISLAVE_MAJOR, DRIVER_NAME);
 		return PTR_ERR(spislave_class);
 	}
@@ -1904,6 +1906,8 @@ static int __init mcspi_slave_init(void)
 	ret = platform_driver_register(&mcspi_slave_driver);
 	if (ret < 0)
 		pr_err("%s: platform driver error\n", DRIVER_NAME);
+
+	pr_debug("%s: init done\n", DRIVER_NAME);
 
 	return ret;
 }
