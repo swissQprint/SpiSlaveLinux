@@ -1899,17 +1899,17 @@ static int __init mcspi_slave_init(void)
 
 	spislave_class = class_create(THIS_MODULE, DRIVER_NAME);
 	if (IS_ERR(spislave_class)) {
-		pr_err("%s: class_create failed: %d\n", DRIVER_NAME, PTR_ERR(spislave_class));
+		pr_err("%s: class_create failed:\n", DRIVER_NAME);
 		unregister_chrdev(SPISLAVE_MAJOR, DRIVER_NAME);
 		return PTR_ERR(spislave_class);
 	}
 
-	ret = platform_driver_register(&mcspi_slave_driver);
-	if (ret < 0) {
-		class_unregister(spislave_class);
-		unregister_chrdev(SPISLAVE_MAJOR, DRIVER_NAME);
-		pr_err("%s: platform driver error\n", DRIVER_NAME);
-	}
+	// ret = platform_driver_register(&mcspi_slave_driver);
+	// if (ret < 0) {
+	// 	class_destroy(spislave_class);
+	// 	unregister_chrdev(SPISLAVE_MAJOR, DRIVER_NAME);
+	// 	pr_err("%s: platform driver error\n", DRIVER_NAME);
+	// }
 
 	pr_debug("%s: init done\n", DRIVER_NAME);
 
