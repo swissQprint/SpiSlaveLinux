@@ -1387,6 +1387,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 
 	/*copy resources because base address is changed*/
 	memcpy(&cp_res, res, sizeof(struct resource));
+	pr_debug("%s: after memcpy: %d\n", DRIVER_NAME, res);
 
 	if (res == NULL) {
 		pr_err("%s: res not available\n", DRIVER_NAME);
@@ -1400,6 +1401,9 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	 */
 	cp_res.start += regs_offset;
 	cp_res.end   += regs_offset;
+
+
+	pr_debug("%s: devm_ioremap_resource %d, %d\n", DRIVER_NAME, cp_res.start, cp_res.end);
 
 	slave->base = devm_ioremap_resource(&pdev->dev, &cp_res);
 	pr_debug("%s: devm_ioremap_resource: %d\n", DRIVER_NAME, IS_ERR(slave->base));
@@ -1426,6 +1430,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	slave->bytes_per_load		= SPI_SLAVE_COPY_LENGTH;
 	slave->bits_per_word		= SPI_SLAVE_BITS_PER_WORD;
 
+	pr_debug("%s: before platform_set_drvdata\n", DRIVER_NAME);
 	platform_set_drvdata(pdev, slave);
 
 	pr_debug("%s: start:%x\n", DRIVER_NAME, slave->start);
