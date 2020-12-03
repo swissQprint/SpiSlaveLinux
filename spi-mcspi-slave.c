@@ -1529,6 +1529,8 @@ static struct platform_driver mcspi_slave_driver = {
 	},
 };
 
+//module_platform_driver(mcspi_slave_driver);
+
 static ssize_t spislave_read(struct file *flip, char __user *buf, size_t count,
 			     loff_t *f_pos)
 {
