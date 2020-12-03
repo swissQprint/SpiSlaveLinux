@@ -1341,9 +1341,10 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 
 	slave = kzalloc(sizeof(struct spi_slave), GFP_KERNEL);
 
-	if (slave == NULL)
+	if (slave == NULL) {
 		pr_debug("%s: kzalloc slave null\n", DRIVER_NAME);
 		return -ENOMEM;
+	}
 
 	match = of_match_device(mcspi_slave_of_match, dev);
 
