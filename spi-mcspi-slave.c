@@ -1342,11 +1342,13 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	slave = kzalloc(sizeof(struct spi_slave), GFP_KERNEL);
 
 	if (slave == NULL)
+		pr_debug("%s: kzalloc slave null\n", DRIVER_NAME);
 		return -ENOMEM;
 
 	match = of_match_device(mcspi_slave_of_match, dev);
 
 	if (match) {/* user setting from dts*/
+		pr_debug("%s: match probe\n", DRIVER_NAME);
 		pdata = match->data;
 
 		if (of_get_property(node, "cs_polarity", &cs_polarity))
@@ -1366,6 +1368,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 			pin_dir = MCSPI_PIN_DIR_D0_OUT_D1_IN; //just trying !!!
 
 		irq = irq_of_parse_and_map(node, 0);
+		pr_debug("%s: after irq_of_parse_and_map\n", DRIVER_NAME);
 
 		slave->bus_num = bus_num++;
 
@@ -1379,12 +1382,13 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	regs_offset = pdata->regs_offset;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	pr_debug("%s: platform_get_resource: %d\n", DRIVER_NAME, res);
 
 	/*copy resources because base address is changed*/
 	memcpy(&cp_res, res, sizeof(struct resource));
 
 	if (res == NULL) {
-		pr_err("%s: res not availablee\n", DRIVER_NAME);
+		pr_err("%s: res not available\n", DRIVER_NAME);
 		ret = -ENODEV;
 		goto free_slave;
 	}
@@ -1397,6 +1401,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	cp_res.end   += regs_offset;
 
 	slave->base = devm_ioremap_resource(&pdev->dev, &cp_res);
+	pr_debug("%s: devm_ioremap_resource: %d\n", DRIVER_NAME, IS_ERR(slave->base));
 
     slave->phys = res->start + regs_offset;
 	if (IS_ERR(slave->base)) {
