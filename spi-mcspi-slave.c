@@ -1904,12 +1904,12 @@ static int __init mcspi_slave_init(void)
 		return PTR_ERR(spislave_class);
 	}
 
-	// ret = platform_driver_register(&mcspi_slave_driver);
-	// if (ret < 0) {
-	// 	class_destroy(spislave_class);
-	// 	unregister_chrdev(SPISLAVE_MAJOR, DRIVER_NAME);
-	// 	pr_err("%s: platform driver error\n", DRIVER_NAME);
-	// }
+	ret = platform_driver_register(&mcspi_slave_driver);
+	if (ret < 0) {
+		class_destroy(spislave_class);
+		unregister_chrdev(SPISLAVE_MAJOR, DRIVER_NAME);
+		pr_err("%s: platform driver error\n", DRIVER_NAME);
+	}
 
 	pr_debug("%s: init done\n", DRIVER_NAME);
 
