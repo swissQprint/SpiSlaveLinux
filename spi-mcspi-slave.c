@@ -1384,6 +1384,10 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	pr_debug("%s: platform_get_resource: %d\n", DRIVER_NAME, res);
+	if(res == NULL) {
+		pr_debug("%s: platform_get_resource nullptr\n", DRIVER_NAME);
+		return -ENOMEM;
+	}
 
 	/*copy resources because base address is changed*/
 	memcpy(&cp_res, res, sizeof(struct resource));
