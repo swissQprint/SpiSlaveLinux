@@ -2,17 +2,17 @@
 #obj-m+= spi-slave-debug.o spi-slave-core.o spi-slave-dev.o spi-mcspi-slave.o 
 obj-m+=  spi-mcspi-slave.o 
 
-ADD_CFLAGS += -g -DDEBUG
-ccflags-y += ${ADD_CFLAGS}
-CC += ${ADD_CFLAGS}
+#ADD_CFLAGS += -g -DDEBUG
+#ccflags-y += ${ADD_CFLAGS}
+#CC += ${ADD_CFLAGS}
 SRC := $(shell pwd)
 #SLAVE_SRC := slave_app.c
 
 all:
 	$(MAKE) -C $(KERNEL_SRC) M=$(SRC)
 
-debug:
-	$(MAKE) -C $(KERNEL_SRC) M=$(SRC) modules EXTRA_CFLAGS="$(ADD_CFLAGS)"
+#debug:
+#	$(MAKE) -C $(KERNEL_SRC) M=$(SRC) modules EXTRA_CFLAGS="$(ADD_CFLAGS)"
 
 modules_install:
 	$(MAKE) -C $(KERNEL_SRC) M=$(SRC) modules_install
