@@ -1399,7 +1399,8 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 	pr_debug("%s: platform_get_resource: %d\n", DRIVER_NAME, res);
 	if(res == NULL) {
 		pr_debug("%s: platform_get_resource nullptr\n", DRIVER_NAME);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto free_slave;
 	}
 
 	/*copy resources because base address is changed*/
