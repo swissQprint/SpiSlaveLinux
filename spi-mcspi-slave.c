@@ -1382,6 +1382,19 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 
 	regs_offset = pdata->regs_offset;
 
+	pr_debug("%s: platform device:\n", DRIVER_NAME);
+	pr_debug("%s: pd name: %s\n", DRIVER_NAME, pdev->name);
+	pr_debug("%s: pd id: %d\n", DRIVER_NAME, pdev->id);
+	pr_debug("%s: pd id_auto: %d\n", DRIVER_NAME, pdev->id_auto);
+	pr_debug("%s: pd num_resources: %d\n", DRIVER_NAME, pdev->num_resources);
+	if(pdev->num_resources > 0) {
+		pr_debug("%s: pd resources: start: %u, end: %u, name: %s\n", DRIVER_NAME, pdev->resource->start, pdev->resource->end, pdev->resource->name);
+		pr_debug("%s: pd resources: start: %x, end: %x, name: %s\n", DRIVER_NAME, pdev->resource->start, pdev->resource->end, pdev->resource->name);
+	}
+	else {
+		pr_debug("%s: pd no resources\n", DRIVER_NAME);
+	}
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	pr_debug("%s: platform_get_resource: %d\n", DRIVER_NAME, res);
 	if(res == NULL) {
