@@ -1142,7 +1142,6 @@ static int mcspi_slave_reset_connection(struct spi_slave *slave)
 
 static int mcspi_slave_allocate_dma_chann_and_buffers(struct spi_slave *slave)
 {
-	dma_cap_mask_t				mask;
 	struct spi_slave_dma			*dma_channel;
 
 	dma_channel = &slave->dma_channel;
@@ -1152,26 +1151,15 @@ static int mcspi_slave_allocate_dma_chann_and_buffers(struct spi_slave *slave)
 	init_completion(&dma_channel->dma_tx_completion);
 	init_completion(&dma_channel->dma_rx_completion);
 
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_SLAVE, mask);
-
-	// TODO test:
-	// slave->dma_channel.dma_rx = dma_request_slave_channel_compat(mask,
-	// 			    omap_dma_filter_fn, NULL, slave->dev,
-	// 			    "rx0");
-	// config for channel should be taken from device tree, needs to be tested, 
-	// changed after omap_dma_filter_fn gave undefined reference
+	// config for channel is taken from device tree
 	slave->dma_channel.dma_rx = dma_request_slave_channel(slave->dev, "rx0");
 
 	if (dma_channel->dma_rx == NULL)
 		goto no_dma;
 
-pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_rx OK\n", DRIVER_NAME);
-	// TODO test:
-	// dma_channel->dma_tx = dma_request_slave_channel_compat(mask,
-	// 		      omap_dma_filter_fn, NULL, slave->dev,
-	// 		      "tx0");
-	// config for channel should be taken from device tree...
+	pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_rx OK\n", DRIVER_NAME);
+
+	// config for channel is taken from device tree
 	dma_channel->dma_tx = dma_request_slave_channel(slave->dev, "tx0");
 
 	if (dma_channel->dma_tx == NULL) {
@@ -1180,30 +1168,21 @@ pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_rx OK\n", DRIVE
 		goto no_dma;
 	}
 
+	slave->rx = kzalloc(PAGE_SIZE*2, GFP_KERNEL);
+	if (slave->rx == NULL)
+		return -ENOMEM;
+
+	pr_debug("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
 	
-		
-		
+	kmalloc_rx_area = slave->rx ;
+	pr_debug("%s:  mcspi_slave_setup mapped to  kmalloc_rx_area\n", DRIVER_NAME);
 
+	pr_debug("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
+	slave->tx = slave->rx + PAGE_SIZE;
+	kmalloc_tx_area = slave->tx ;	
+	pr_debug("%s:  mcspi_slave_setup mapped to  kmalloc_tx_area\n", DRIVER_NAME);
 
-		
-		slave->rx = kzalloc(PAGE_SIZE*2, GFP_KERNEL);
-		if (slave->rx == NULL)
-			return -ENOMEM;
-		 pr_debug("%s:  mcspi_slave_setup allocated  slave->rx \n", DRIVER_NAME);
-			
-		 kmalloc_rx_area = slave->rx ;
-		 pr_debug("%s:  mcspi_slave_setup mapped to  kmalloc_rx_area\n", DRIVER_NAME);
-
-		
-
-		pr_debug("%s:  mcspi_slave_setup allocated  slave->tx \n", DRIVER_NAME);	
-		slave->tx = slave->rx + PAGE_SIZE;
-		kmalloc_tx_area = slave->tx ;	
-		pr_debug("%s:  mcspi_slave_setup mapped to  kmalloc_tx_area\n", DRIVER_NAME);
-	
-
-
-pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_tx OK\n", DRIVER_NAME);
+	pr_debug("%s: mcspi_slave_allocate_dma_chann_and_buffers for dma_tx OK\n", DRIVER_NAME);
 	return 0;
 
 no_dma:
@@ -1362,11 +1341,7 @@ static int mcspi_slave_probe(struct platform_device *pdev)
 		else
 			cs_sensitive = MCSPI_CS_SENSITIVE_ENABLED;
 
-	/*	if (of_get_property(node, "pindir-D0-out-D1-in", &pin_dir))
-			pin_dir = MCSPI_PIN_DIR_D0_OUT_D1_IN;
-		else
-			pin_dir = MCSPI_PIN_DIR_D0_IN_D1_OUT;*/
-			pin_dir = MCSPI_PIN_DIR_D0_OUT_D1_IN; //just trying !!!
+		pin_dir = MCSPI_PIN_DIR_D0_OUT_D1_IN; //just trying !!!
 
 		irq = irq_of_parse_and_map(node, 0);
 		pr_debug("%s: after irq_of_parse_and_map\n", DRIVER_NAME);
@@ -1602,30 +1577,13 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 		return -ENOMEM;
 	}
 
-	//memset(slave->tx, 0, TRANSFER_BUF_SIZE);
-
-	
-
-    //pr_debug("%s: spislave_write::  copyng buffer from user to  TX buffer\n", DRIVER_NAME);
-	
-	
-	
-
-	/*missing = copy_from_user(slave->tx, buf, count);
-
-	if (missing == 0)
-		ret = count;
-	else
-		return -EFAULT;*/
-
-
-     debug_counter++;
+    debug_counter++;
 	// kmalloc_debug2 = slave->tx;
-	 pr_debug("%s: spislave_write <<<<<< debug counter is %d>>>>>>>>>\n", DRIVER_NAME,debug_counter);
-	 pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[0]);
-	 pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[1]);
-	 pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[254]);
-	 pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[255]);
+	pr_debug("%s: spislave_write <<<<<< debug counter is %d>>>>>>>>>\n", DRIVER_NAME,debug_counter);
+	pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[0]);
+	pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[1]);
+	pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[254]);
+	pr_debug("%s: spislave_write   %8X \n", DRIVER_NAME,kmalloc_debug2[255]);
 	pr_debug("%s: write count:%d\n", DRIVER_NAME, count);
 	slave->tx_offset = 0;
 
@@ -1638,11 +1596,11 @@ static ssize_t spislave_write(struct file *flip, const char __user *buf,
 		mcspi_slave_enable(slave); 
 	}
 
-	 mcspi_slave_dma_tx_transfer(slave); //configure DMA
-	 mcspi_slave_dma_rx_transfer(slave); //configure DMA
+	mcspi_slave_dma_tx_transfer(slave); //configure DMA
+	mcspi_slave_dma_rx_transfer(slave); //configure DMA
 	
 
-pr_debug("%s: spislave_write  step 5 .dma_async_issue_pending for RX/TX \n", DRIVER_NAME);
+	pr_debug("%s: spislave_write  step 5 .dma_async_issue_pending for RX/TX \n", DRIVER_NAME);
 	dma_async_issue_pending(slave->dma_channel.dma_tx);  //start DMA
 	dma_async_issue_pending(slave->dma_channel.dma_rx);  //start DMA
 	
@@ -1653,17 +1611,14 @@ pr_debug("%s: spislave_write  step 5 .dma_async_issue_pending for RX/TX \n", DRI
 		reinit_completion(&slave->dma_channel.dma_tx_completion);
 		mcspi_slave_dma_request_enable(slave, 0);  //Tx
 		mcspi_slave_dma_request_enable(slave, 1);  //rx
-	
-			
 	}
-
 
 	//wait for rx to complete; rx shoul come as last callback after tx. if tx comes first we migth have a problem
 	if(slave->first_dma_started )
 	{
 		pr_debug("%s: spislave_write  ---waiting for DMa complete \n", DRIVER_NAME);
 		//ret = mcspi_wait_for_completion( &slave->dma_channel.dma_tx_completion);
-	//	ret = mcspi_wait_for_completion( &slave->dma_channel.dma_rx_completion);
+		//ret = mcspi_wait_for_completion( &slave->dma_channel.dma_rx_completion);
 		pr_debug("%s: spislave_write  ---DMa complete \n", DRIVER_NAME);
 	
 	}
@@ -1675,19 +1630,16 @@ pr_debug("%s: spislave_write  step 5 .dma_async_issue_pending for RX/TX \n", DRI
 
 static int spislave_mmap(struct file *file, struct vm_area_struct *vma)
 { 
-
-	
-	
 	int ret = 0;
     struct page *page = NULL;
     unsigned long size = (unsigned long)(vma->vm_end - vma->vm_start);
-		pr_debug("%s entering spislave_mmap \n",DRIVER_NAME);
+	pr_debug("%s entering spislave_mmap \n",DRIVER_NAME);
 
     if (size > PAGE_SIZE*2) {
         ret = -EINVAL;
         goto out;  
     } 
-     pr_info("%s entering spislave_mmap size-%d  page offset %d\n",DRIVER_NAME,size,vma->vm_pgoff);
+    pr_info("%s entering spislave_mmap size-%d  page offset %d\n",DRIVER_NAME,size,vma->vm_pgoff);
 
 	    if(vma->vm_pgoff == 0)
 		{
