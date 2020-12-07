@@ -1790,4 +1790,4 @@ module_exit(mcspi_slave_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("swissQprint");
 MODULE_DESCRIPTION("SPI slave for McSPI controller.");
-MODULE_VERSION("3.0");
+MODULE_VERSION("4.0");
