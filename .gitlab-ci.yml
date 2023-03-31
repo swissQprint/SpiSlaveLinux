@@ -1,5 +1,5 @@
 variables:
-  SQP_CI_PROJECTNAME: SpiSlaveLinux
+  PROJECTNAME: SpiSlaveLinux
 
 stages:
   - package
