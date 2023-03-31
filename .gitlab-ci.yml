@@ -13,7 +13,7 @@ package-spiSlaveLinux:
   script:
     - conan user -p AP65yNr4jrB9SRv6neyGv6kxnXs3KmuStoYJo4 -r inhouse gitlab -s
     - conan remove $PROJECTNAME -f
-    - conan create . sqp/release --update -pr linux64_x_yocto-arm57xx-armv7hf-linux-gnueabi_gcc9_release -o -s build_type=Release
+    - conan create . sqp/release --update -pr linux64_x_yocto-arm57xx-armv7hf-linux-gnueabi_gcc9_release -s build_type=Release
     - conan upload $PROJECTNAME --all -r=inhouse -c
 
 
