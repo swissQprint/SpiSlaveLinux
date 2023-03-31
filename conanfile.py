@@ -1,6 +1,6 @@
 from conans import ConanFile, CMake, python_requires
 
-build_tools = "sqpBuildTools/[~3.0]@sqp/release"
+build_tools = "sqpBuildTools/[~3.0]@tools/release"
 sqp = python_requires(build_tools)
 
 class LibsqpSpiSlaveLinuxConan(ConanFile):
